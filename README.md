@@ -12,3 +12,13 @@ Simple-MQ serves as simple practice for constructing a message queue and contain
 - Message delivery policy is "At Most Once", meaning that messages are deleted as soon as they are consumed once
 - Any user can consume messages from any queue
 - Queue is entirely in memory, meaning that in-flight messages are lost if the queue crashes
+
+
+## Push-MQ
+Same as Simple-MQ but with the following alterations:
+- Consumers attach server locations to call a `POST /queue/message` method on for messages
+  - Push-MQ automatically calls all consumers and retries if not given a 200 response ("At Least Once" policy)
+- Call `POST /queues/{queueName}/subscribers/{subName}` to register
+- Call `DELETE /queues/{queueName}/subscribers/{subName}`
+- Allows multiple subscribers per queue (with pub/sub policy)
+- Still in memory (no fault tolerance)
