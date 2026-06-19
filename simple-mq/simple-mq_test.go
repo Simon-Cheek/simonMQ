@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -95,6 +96,62 @@ func TestConcurrentEnqueueToDifferentQueues(t *testing.T) {
 	}
 	if !slices.Equal(q3Contents, queue3Payloads) {
 		t.Errorf("got %s, want %s", q1Contents, queue3Payloads)
+	}
+}
+
+// Testing concurrent enqueues to different queues
+func TestConcurrentEnqueueToSameQueue(t *testing.T) {
+	queueName := "concurrentQueue"
+	// Test Setup
+	drainQueueContents(queueName)
+	queue1Payloads := []string{"Q1payload1", "Q1payload2", "Q1payload3", "Q1payload4", "Q1payload5", "Q1payload6", "Q1payload7", "Q1payload8"}
+	queue2Payloads := []string{"Q2payload1", "Q2payload2", "Q2payload3", "Q2payload4", "Q2payload5", "Q2payload6", "Q2payload7", "Q2payload8"}
+	queue3Payloads := []string{"Q3payload1", "Q3payload2", "Q3payload3", "Q3payload4", "Q3payload5", "Q3payload6", "Q3payload7", "Q3payload8"}
+	totalPayloads := slices.Concat(slices.Concat(queue1Payloads, queue2Payloads), queue3Payloads)
+
+	// Load in separate queues concurrently
+	wg := sync.WaitGroup{}
+	wg.Add(3)
+	go func() {
+		for _, payload := range queue1Payloads {
+			err := enqueue(queueName, payload)
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		for _, payload := range queue2Payloads {
+			err := enqueue(queueName, payload)
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		for _, payload := range queue3Payloads {
+			err := enqueue(queueName, payload)
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+
+	// Verify queue received all msgs
+	qContents, err := drainQueueContents(queueName)
+	if err != nil {
+		t.Error(err)
+	}
+	sort.Strings(qContents)
+	sort.Strings(totalPayloads)
+	if !slices.Equal(qContents, totalPayloads) {
+		t.Errorf("got %s, want %s", qContents, totalPayloads)
 	}
 }
 
