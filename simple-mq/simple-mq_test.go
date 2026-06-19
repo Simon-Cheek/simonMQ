@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
 const baseURL = "http://localhost:8080"
 
+// Simple test verifying 1 Enqueue and 1 Dequeue
 func TestEnqueueThenDequeue(t *testing.T) {
 	queue := "myqueue"
 	payload := "payload"
@@ -24,6 +27,74 @@ func TestEnqueueThenDequeue(t *testing.T) {
 	}
 	if res != payload {
 		t.Errorf("got %s, want %s", res, payload)
+	}
+}
+
+// Testing concurrent enqueues to different queues
+func TestConcurrentEnqueueToDifferentQueues(t *testing.T) {
+	// Test Setup
+	drainQueueContents("q1")
+	drainQueueContents("q2")
+	drainQueueContents("q3")
+	queue1Payloads := []string{"Q1payload1", "Q1payload2", "Q1payload3", "Q1payload4", "Q1payload5", "Q1payload6", "Q1payload7", "Q1payload8"}
+	queue2Payloads := []string{"Q2payload1", "Q2payload2", "Q2payload3", "Q2payload4", "Q2payload5", "Q2payload6", "Q2payload7", "Q2payload8"}
+	queue3Payloads := []string{"Q3payload1", "Q3payload2", "Q3payload3", "Q3payload4", "Q3payload5", "Q3payload6", "Q3payload7", "Q3payload8"}
+
+	// Load in separate queues concurrently
+	wg := sync.WaitGroup{}
+	wg.Add(3)
+	go func() {
+		for _, payload := range queue1Payloads {
+			err := enqueue("q1", payload)
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		for _, payload := range queue2Payloads {
+			err := enqueue("q2", payload)
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		for _, payload := range queue3Payloads {
+			err := enqueue("q3", payload)
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+
+	// Verify all 3 queues filled in correct order
+	q1Contents, err := drainQueueContents("q1")
+	if err != nil {
+		t.Error(err)
+	}
+	if !slices.Equal(q1Contents, queue1Payloads) {
+		t.Errorf("got %s, want %s", q1Contents, queue2Payloads)
+	}
+	q2Contents, err := drainQueueContents("q2")
+	if err != nil {
+		t.Error(err)
+	}
+	if !slices.Equal(q2Contents, queue2Payloads) {
+		t.Errorf("got %s, want %s", q1Contents, queue2Payloads)
+	}
+	q3Contents, err := drainQueueContents("q3")
+	if err != nil {
+		t.Error(err)
+	}
+	if !slices.Equal(q3Contents, queue3Payloads) {
+		t.Errorf("got %s, want %s", q1Contents, queue3Payloads)
 	}
 }
 
@@ -54,6 +125,10 @@ func dequeue(queue string) (string, error) {
 		return "", fmt.Errorf("reading body failed: %w", err)
 	}
 
+	if resp.StatusCode == http.StatusNoContent {
+		fmt.Println("empty queue: ", queue)
+		return "", nil
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status on dequeue: %d, body=%s", resp.StatusCode, raw)
 	}
@@ -65,4 +140,19 @@ func dequeue(queue string) (string, error) {
 
 	fmt.Println("got message: ", got, " from queue: ", queue)
 	return got["Payload"], nil
+}
+
+func drainQueueContents(queue string) ([]string, error) {
+	contents := []string{}
+
+	for {
+		resp, err := dequeue(queue)
+		if err != nil {
+			return contents, fmt.Errorf("drain request failed: %w", err)
+		}
+		if resp == "" {
+			return contents, nil
+		}
+		contents = append(contents, resp)
+	}
 }
