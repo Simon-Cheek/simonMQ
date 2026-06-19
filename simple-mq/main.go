@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	b := Broker{}
+	b := NewBroker()
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /queues/{queueName}/messages", b.handleEnqueue)
 	mux.HandleFunc("GET /queues/{queueName}/messages/next", b.handleDequeue)
