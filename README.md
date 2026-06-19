@@ -3,7 +3,6 @@
 This repository serves as design practice for Message Queues of varying designs. Each one will be documented here.
 
 ## Simple-MQ
-
 Simple-MQ serves as simple practice for constructing a message queue and contains the following features:
 - HTTP Server that accepts `POST /queues/{queueName}/messages` to enqueue
   - If `queueName` has not been used previously, it will be created
@@ -13,6 +12,9 @@ Simple-MQ serves as simple practice for constructing a message queue and contain
 - Any user can consume messages from any queue
 - Queue is entirely in memory, meaning that in-flight messages are lost if the queue crashes
 
+## Simple-MQ-2
+Same as Simple-MQ with concurrency optimizations such as queue specific locks and better internal data structures
+- Used to demonstrate throughput improvements with more efficient concurrency mgmt
 
 ## Push-MQ
 Same as Simple-MQ but with the following alterations:
