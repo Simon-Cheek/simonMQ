@@ -19,6 +19,12 @@ type QueueMsg struct {
 	Payload string
 }
 
+func NewBroker() *Broker {
+	return &Broker{
+		queues: make(map[string]*Queue),
+	}
+}
+
 func (b *Broker) enqueue(name string, payload string) *QueueMsg {
 
 	msg := &QueueMsg{
@@ -31,7 +37,7 @@ func (b *Broker) enqueue(name string, payload string) *QueueMsg {
 	defer b.mu.Unlock()
 
 	val, exists := b.queues[name]
-	if exists && len(val.messages) > 0 {
+	if exists {
 		val.messages = append(val.messages, msg)
 	} else {
 		b.queues[name] = &Queue{
@@ -50,11 +56,10 @@ func (b *Broker) dequeue(name string) *QueueMsg {
 	defer b.mu.Unlock()
 
 	val, exists := b.queues[name]
-	if exists {
+	if exists && len(val.messages) > 0 {
 		msg := val.messages[0]
 		val.messages = val.messages[1:]
 		return msg
-	} else {
-		return nil
 	}
+	return nil
 }
