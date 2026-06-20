@@ -14,7 +14,7 @@ func NewBroker() *Broker {
 	}
 }
 
-func (b *Broker) enqueue(name string, payload string) *QueueMsg {
+func (b *Broker) Enqueue(name string, payload string) *QueueMsg {
 
 	msg := &QueueMsg{
 		MsgId:   name + "/" + uuid.New().String(),
@@ -22,25 +22,15 @@ func (b *Broker) enqueue(name string, payload string) *QueueMsg {
 	}
 
 	queue := b.getOrCreateQueue(name)
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	queue.messages = append(queue.messages, msg)
-
+	queue.Add(msg)
 	return msg
 }
 
-func (b *Broker) dequeue(name string) *QueueMsg {
+func (b *Broker) Dequeue(name string) *QueueMsg {
 
 	queue := b.getOrCreateQueue(name)
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-
-	if len(queue.messages) > 0 {
-		msg := queue.messages[0]
-		queue.messages = queue.messages[1:]
-		return msg
-	}
-	return nil
+	msg := queue.Pop()
+	return msg
 }
 
 func (b *Broker) getOrCreateQueue(name string) *Queue {
@@ -49,7 +39,7 @@ func (b *Broker) getOrCreateQueue(name string) *Queue {
 
 	q, exists := b.queues[name]
 	if !exists {
-		q = &Queue{name: name}
+		q = newQueue(name)
 		b.queues[name] = q
 	}
 	return q

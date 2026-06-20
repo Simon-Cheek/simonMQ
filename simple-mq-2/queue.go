@@ -5,6 +5,8 @@ import (
 	"sync"
 )
 
+const initialCapacity = 10
+
 type Queue struct {
 	name  string
 	count int         // Total Unread Msgs
@@ -18,7 +20,16 @@ type QueueMsg struct {
 	Payload string
 }
 
-func (q *Queue) add(msg *QueueMsg) {
+func newQueue(name string) *Queue {
+	return &Queue{
+		name:  name,
+		count: 0,
+		head:  0,
+		buf:   make([]*QueueMsg, initialCapacity),
+	}
+}
+
+func (q *Queue) Add(msg *QueueMsg) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -26,12 +37,12 @@ func (q *Queue) add(msg *QueueMsg) {
 	q.buf[ind] = msg
 	q.count++
 
-	if q.count*2 > len(q.buf) {
+	if q.count >= len(q.buf) {
 		q.grow()
 	}
 }
 
-func (q *Queue) pop() *QueueMsg {
+func (q *Queue) Pop() *QueueMsg {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -43,7 +54,7 @@ func (q *Queue) pop() *QueueMsg {
 	q.head = (q.head + 1) % len(q.buf)
 	q.count--
 
-	if q.count*3 < len(q.buf) && len(q.buf) > 100 {
+	if q.count*4 <= len(q.buf) {
 		q.compact()
 	}
 
@@ -56,7 +67,7 @@ func (q *Queue) grow() {
 }
 
 func (q *Queue) compact() {
-	newBuf := make([]*QueueMsg, len(q.buf)/2)
+	newBuf := make([]*QueueMsg, max(len(q.buf)/2, initialCapacity))
 	q.copyOver(newBuf)
 }
 
