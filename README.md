@@ -18,13 +18,18 @@ Same as Simple-MQ with concurrency optimizations such as queue specific locks an
 - Uses Ring Buffer Queue Implementation
 
 ## Push-MQ
-Same as Simple-MQ but with the following alterations:
+Pub/Sub model concurrently sending messages to each queue's configured subscribers
 - Consumers attach server locations to call a `POST /queue/message` method on for messages
   - Push-MQ automatically calls all consumers and retries if not given a 200 response ("At Least Once" policy)
 - Call `POST /queues/{queueName}/subscribers/{subName}` to register
+- Call `PUT /queues/{queueName}/subscribers/{subName}` to configure individual subscriber policies
 - Call `DELETE /queues/{queueName}/subscribers/{subName}`
-- Allows multiple subscribers per queue (with pub/sub policy)
-- Still in memory (no fault tolerance)
+- Policies
+  - Fully in memory (no persistence yet)
+  - No Dead Letter System (yet)
+  - Configurable retry system per subscriber (max attempts, retry frequency, etc)
+  - NOT FIFO (messages can deliver out of order even within a queue)
+  - At-least-once policy (guaranteed message transfer preferred over preventing duplicates)
 
 ## Performance-Tests
 Used to understand the performance differences between the various implementations.
