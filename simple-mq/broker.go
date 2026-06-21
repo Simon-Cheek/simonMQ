@@ -1,7 +1,6 @@
 package main
 
 import "sync"
-import "github.com/google/uuid"
 
 type Broker struct {
 	queues map[string]*Queue
@@ -28,7 +27,7 @@ func NewBroker() *Broker {
 func (b *Broker) enqueue(name string, payload string) *QueueMsg {
 
 	msg := &QueueMsg{
-		MsgId:   name + "/" + uuid.New().String(),
+		MsgId:   name + "/", // + uuid.New().String(), Todo: Remove UUID Generation. bottlenecks throughput
 		Payload: payload,
 	}
 

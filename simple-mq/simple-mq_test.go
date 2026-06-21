@@ -12,6 +12,7 @@ import (
 	"testing"
 )
 
+// Requires local server to be running
 const baseURL = "http://localhost:8080"
 
 // Simple test verifying 1 Enqueue and 1 Dequeue
