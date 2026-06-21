@@ -12,7 +12,8 @@ import (
 	"testing"
 )
 
-const baseURL = "http://localhost:8080"
+// Requires local server to be running
+const baseURL = "http://localhost:8081"
 
 // Simple test verifying 1 Enqueue and 1 Dequeue
 func TestEnqueueThenDequeue(t *testing.T) {

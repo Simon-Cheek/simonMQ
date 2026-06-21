@@ -15,6 +15,7 @@ Simple-MQ serves as simple practice for constructing a message queue and contain
 ## Simple-MQ-2
 Same as Simple-MQ with concurrency optimizations such as queue specific locks and better internal data structures
 - Used to demonstrate throughput improvements with more efficient concurrency mgmt
+- Uses Ring Buffer Queue Implementation
 
 ## Push-MQ
 Same as Simple-MQ but with the following alterations:
@@ -24,3 +25,15 @@ Same as Simple-MQ but with the following alterations:
 - Call `DELETE /queues/{queueName}/subscribers/{subName}`
 - Allows multiple subscribers per queue (with pub/sub policy)
 - Still in memory (no fault tolerance)
+
+## Performance-Tests
+Used to understand the performance differences between the various implementations.
+
+### Simple-MQ vs Simple-MQ-2
+- Simple-MQ and Simple-MQ-2 had near identical throughput in various environments
+  - CPU (Unit) Bound tests
+    - Near identical throughput, unless at high contention levels (8+ cores contending for same queues)
+    - Throughput was bottlenecked by UUID generation more than anything
+  - External (HTTP) tests
+    - Near identical throughput regardless of contention levels
+    - Possibly HTTP/JSON bottlenecked? Could try gRPC implementation next
