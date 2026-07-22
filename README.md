@@ -30,6 +30,8 @@ Pub/Sub model concurrently sending messages to each queue's configured subscribe
   - Configurable retry system per subscriber (max attempts, retry frequency, etc)
   - NOT FIFO (messages can deliver out of order even within a queue)
   - At-least-once policy (guaranteed message transfer preferred over preventing duplicates)
+  - Subscriber policy changes dont affect messages actively in flight
+    - Once they are taken off of the queue, the policy is frozen
 
 # Push-MQ Implementation
 - HTTP server accepting requests for new messages / new queues / new subscribers

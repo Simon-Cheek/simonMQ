@@ -13,24 +13,28 @@ func NewBroker() *Broker {
 	}
 }
 
-func (b *Broker) Enqueue(name string, payload string) *QueueMsg {
-
+// TODO: Error if queue does not exist
+func (b *Broker) Enqueue(name string, payload string) (error, *QueueMsg) {
 	msg := &QueueMsg{
 		MsgId:   name + "/", //+ uuid.New().String(), // Todo: Replace with non UUID string
 		Payload: payload,
 	}
-
 	queue := b.getOrCreateQueue(name)
 	queue.Add(msg)
-	return msg
+	return nil, msg
 }
 
-func (b *Broker) Dequeue(name string) *QueueMsg {
-
+// TODO: Error if queue does not exist
+func (b *Broker) Dequeue(name string) (error, *QueueMsg) {
 	queue := b.getOrCreateQueue(name)
 	msg := queue.Pop()
-	return msg
+	return nil, msg
 }
+
+// TODO: Error if queue does not exist, Implement
+func (b *Broker) AddSubscriber(metadata SubMetadata, queueName string) error    {}
+func (b *Broker) UpdateSubscriber(metadata SubMetadata, queueName string) error {}
+func (b *Broker) RemoveSubscriber(metadata SubMetadata, queueName string) error {}
 
 func (b *Broker) getOrCreateQueue(name string) *Queue {
 	b.mu.Lock()
