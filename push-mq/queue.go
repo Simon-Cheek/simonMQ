@@ -44,25 +44,6 @@ func (q *Queue) Add(msg *QueueMsg) {
 	}
 }
 
-//func (q *Queue) Pop() *QueueMsg {
-//	q.mu.Lock()
-//	defer q.mu.Unlock()
-
-//if q.count == 0 {
-//	return nil
-//}
-//
-//msg := q.buf[q.head]
-//q.head = (q.head + 1) % len(q.buf)
-//q.count--
-//
-//if q.count*4 <= len(q.buf) {
-//	q.compact()
-//}
-//
-//return msg
-//}
-
 func (q *Queue) grow() {
 	newBuf := make([]*QueueMsg, len(q.buf)*2)
 	q.copyOver(newBuf)
