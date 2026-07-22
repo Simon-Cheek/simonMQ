@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 const initialCapacity = 10
@@ -19,15 +20,23 @@ type Queue struct {
 type QueueMsg struct {
 	MsgId     string
 	Payload   string
-	ackedSubs []string
+	ackedSubs map[string]struct{}                  // Acked or Ran out of Retries (No DLQ yet)
+	metadata  map[string]*QueueMsgDeliveryMetadata // Maps Subscriber names to their metadata
+}
+
+type QueueMsgDeliveryMetadata struct {
+	retryCount            int
+	lastRetry             time.Time
+	deliverySuccessStatus bool // Remains false if retries are exceeded
 }
 
 func newQueue(name string) *Queue {
 	return &Queue{
-		name:  name,
-		count: 0,
-		head:  0,
-		buf:   make([]*QueueMsg, initialCapacity),
+		name:    name,
+		count:   0,
+		head:    0,
+		buf:     make([]*QueueMsg, initialCapacity),
+		SubMeta: make(map[string]*SubMetadata),
 	}
 }
 
@@ -42,6 +51,25 @@ func (q *Queue) Add(msg *QueueMsg) {
 	if q.count >= len(q.buf) {
 		q.grow()
 	}
+}
+
+func (q *Queue) Pop() *QueueMsg {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.count == 0 {
+		return nil
+	}
+
+	msg := q.buf[q.head]
+	q.head = (q.head + 1) % len(q.buf)
+	q.count--
+
+	if q.count*4 <= len(q.buf) {
+		q.compact()
+	}
+
+	return msg
 }
 
 func (q *Queue) grow() {
