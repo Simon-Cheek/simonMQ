@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -10,10 +11,10 @@ const initialCapacity = 10
 
 type Queue struct {
 	name    string
-	count   int         // Total Unread Msgs
-	head    int         // Location of last unread msg
-	buf     []*QueueMsg // Ring buffer
-	mu      sync.Mutex
+	count   int                     // Total Unread Msgs
+	head    int                     // Location of last unread msg
+	buf     []*QueueMsg             // Ring buffer
+	mu      sync.Mutex              // Manages Queue Internals
 	SubMeta map[string]*SubMetadata // Map of sub names to Metadata
 }
 
@@ -97,4 +98,74 @@ func (q *Queue) copyOver(newBuf []*QueueMsg) {
 	}
 	q.buf = newBuf
 	q.head = 0
+}
+
+func (q *Queue) addSubscriber(metadata SubMetadata) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if !isValidSubMetadata(metadata) {
+		return errors.New("invalid subscriber metadata")
+	}
+	initializeDefaultSubMetadataFields(&metadata)
+	subMetaList := q.SubMeta
+	subMetaList[metadata.subName] = &metadata
+	return nil
+}
+
+func (q *Queue) updateSubscriber(metadata SubMetadata) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if !isValidSubMetadata(metadata) {
+		return errors.New("invalid subscriber metadata")
+	}
+	initializeDefaultSubMetadataFields(&metadata)
+	subMetaList := q.SubMeta
+	subMetaList[metadata.subName] = &metadata
+	return nil
+}
+
+func (q *Queue) removeSubscriber(subName string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	subMetaList := q.SubMeta
+	delete(subMetaList, subName)
+}
+
+func initializeDefaultSubMetadataFields(metadata *SubMetadata) {
+	if metadata.numberOfRetries < 0 {
+		metadata.numberOfRetries = 3
+	}
+	if metadata.retryPolicy == "" {
+		metadata.retryPolicy = "fixed"
+	}
+	if metadata.initialDelay < 1 {
+		metadata.initialDelay = 25
+	}
+}
+
+func isValidSubMetadata(metadata SubMetadata) bool {
+	if metadata.subName == "" {
+		return false
+	}
+	if metadata.retryPolicy != "fixed" && metadata.retryPolicy != "exponential" && metadata.retryPolicy != "" {
+		return false
+	}
+
+	if metadata.subURL == "" {
+		return false
+	}
+
+	// No Initial Delays longer than a minute
+	if metadata.initialDelay > 60000 {
+		return false
+	}
+
+	if metadata.numberOfRetries > 100 {
+		return false
+	}
+
+	return true
 }

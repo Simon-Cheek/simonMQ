@@ -1,6 +1,7 @@
 package main
 
 type SubMetadata struct {
+	subName         string
 	subURL          string // URL to call POST /queue/message on
 	numberOfRetries int
 	retryPolicy     string // Either fixed delay or exponential, fixed delay by default

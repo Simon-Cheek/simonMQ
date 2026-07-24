@@ -1,6 +1,10 @@
 package main
 
-import "sync"
+import (
+	"errors"
+	"fmt"
+	"sync"
+)
 
 type Broker struct {
 	queues map[string]*Queue
@@ -13,37 +17,67 @@ func NewBroker() *Broker {
 	}
 }
 
-// TODO: Error if queue does not exist
 func (b *Broker) Enqueue(name string, payload string) (error, *QueueMsg) {
 	msg := &QueueMsg{
 		MsgId:   name + "/", //+ uuid.New().String(), // Todo: Replace with non UUID string
 		Payload: payload,
 	}
-	queue := b.getOrCreateQueue(name)
+	err, queue := b.getQueue(name)
+	if err != nil {
+		return err, nil
+	}
 	queue.Add(msg)
 	return nil, msg
 }
 
-// TODO: Error if queue does not exist
 func (b *Broker) Dequeue(name string) (error, *QueueMsg) {
-	queue := b.getOrCreateQueue(name)
+	err, queue := b.getQueue(name)
+	if err != nil {
+		return err, nil
+	}
 	msg := queue.Pop()
 	return nil, msg
 }
 
-// TODO: Error if queue does not exist, Implement
-func (b *Broker) AddSubscriber(metadata SubMetadata, queueName string) error    {}
-func (b *Broker) UpdateSubscriber(metadata SubMetadata, queueName string) error {}
-func (b *Broker) RemoveSubscriber(metadata SubMetadata, queueName string) error {}
-
-func (b *Broker) getOrCreateQueue(name string) *Queue {
+func (b *Broker) AddSubscriber(metadata SubMetadata, queueName string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	err, queue := b.getQueue(queueName)
+	if err != nil {
+		return err
+	}
+
+	err = queue.addSubscriber(metadata)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *Broker) UpdateSubscriber(metadata SubMetadata, queueName string) error {
+
+}
+
+func (b *Broker) RemoveSubscriber(subName string, queueName string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	err, queue := b.getQueue(queueName)
+	if err != nil {
+		return err
+	}
+
+	queue.removeSubscriber(subName)
+	return nil
+}
+
+func (b *Broker) getQueue(name string) (error, *Queue) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	q, exists := b.queues[name]
 	if !exists {
-		q = newQueue(name)
-		b.queues[name] = q
+		return errors.New(fmt.Sprintf("queue %s does not exist", name)), nil
 	}
-	return q
+	return nil, q
 }
