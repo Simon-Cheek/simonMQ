@@ -47,7 +47,7 @@ func (b *Broker) Dequeue(name string) (error, *QueueMsg) {
 	return nil, msg
 }
 
-func (b *Broker) AddSubscriber(metadata SubMetadata, queueName string) error {
+func (b *Broker) AddSubscriber(metadata SubPolicy, queueName string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -63,7 +63,7 @@ func (b *Broker) AddSubscriber(metadata SubMetadata, queueName string) error {
 	return nil
 }
 
-func (b *Broker) UpdateSubscriber(metadata SubMetadata, queueName string) error {
+func (b *Broker) UpdateSubscriber(metadata SubPolicy, queueName string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	err, queue := b.getQueue(queueName)

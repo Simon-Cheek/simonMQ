@@ -10,12 +10,12 @@ import (
 const initialCapacity = 10
 
 type Queue struct {
-	name    string
-	count   int                     // Total Unread Msgs
-	head    int                     // Location of last unread msg
-	buf     []*QueueMsg             // Ring buffer
-	mu      sync.Mutex              // Protects structs internal to the queue (including SubMetadata)
-	SubMeta map[string]*SubMetadata // Map of sub names to Metadata
+	name        string
+	count       int                   // Total Unread Msgs
+	head        int                   // Location of last unread msg
+	buf         []*QueueMsg           // Ring buffer
+	mu          sync.Mutex            // Protects structs internal to the queue (including SubPolicy)
+	SubPolicies map[string]*SubPolicy // Map of sub names to Metadata
 }
 
 type QueueMsg struct {
@@ -33,11 +33,11 @@ type QueueMsgDeliveryMetadata struct {
 
 func newQueue(name string) *Queue {
 	return &Queue{
-		name:    name,
-		count:   0,
-		head:    0,
-		buf:     make([]*QueueMsg, initialCapacity),
-		SubMeta: make(map[string]*SubMetadata),
+		name:        name,
+		count:       0,
+		head:        0,
+		buf:         make([]*QueueMsg, initialCapacity),
+		SubPolicies: make(map[string]*SubPolicy),
 	}
 }
 
@@ -100,7 +100,7 @@ func (q *Queue) copyOver(newBuf []*QueueMsg) {
 	q.head = 0
 }
 
-func (q *Queue) addSubscriber(metadata SubMetadata) error {
+func (q *Queue) addSubscriber(metadata SubPolicy) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -108,12 +108,12 @@ func (q *Queue) addSubscriber(metadata SubMetadata) error {
 		return errors.New("invalid subscriber metadata")
 	}
 	initializeDefaultSubMetadataFields(&metadata)
-	subMetaList := q.SubMeta
+	subMetaList := q.SubPolicies
 	subMetaList[metadata.subName] = &metadata
 	return nil
 }
 
-func (q *Queue) updateSubscriber(metadata SubMetadata) error {
+func (q *Queue) updateSubscriber(metadata SubPolicy) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -121,7 +121,7 @@ func (q *Queue) updateSubscriber(metadata SubMetadata) error {
 		return errors.New("invalid subscriber metadata")
 	}
 	initializeDefaultSubMetadataFields(&metadata)
-	subMetaList := q.SubMeta
+	subMetaList := q.SubPolicies
 	subMetaList[metadata.subName] = &metadata
 	return nil
 }
@@ -130,42 +130,25 @@ func (q *Queue) removeSubscriber(subName string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	subMetaList := q.SubMeta
+	subMetaList := q.SubPolicies
 	delete(subMetaList, subName)
 }
 
-func initializeDefaultSubMetadataFields(metadata *SubMetadata) {
+func initializeDefaultSubMetadataFields(metadata *SubPolicy) {
 	if metadata.numberOfRetries < 0 {
 		metadata.numberOfRetries = 3
 	}
-	if metadata.retryPolicy == "" {
-		metadata.retryPolicy = "fixed"
-	}
-	if metadata.initialDelay < 1 {
-		metadata.initialDelay = 25
-	}
 }
 
-func isValidSubMetadata(metadata SubMetadata) bool {
+func isValidSubMetadata(metadata SubPolicy) bool {
 	if metadata.subName == "" {
 		return false
 	}
-	if metadata.retryPolicy != "fixed" && metadata.retryPolicy != "exponential" && metadata.retryPolicy != "" {
-		return false
-	}
-
 	if metadata.subURL == "" {
 		return false
 	}
-
-	// No Initial Delays longer than a minute
-	if metadata.initialDelay > 60000 {
-		return false
-	}
-
 	if metadata.numberOfRetries > 100 {
 		return false
 	}
-
 	return true
 }
