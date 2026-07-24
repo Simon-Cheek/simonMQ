@@ -14,7 +14,7 @@ type Queue struct {
 	count   int                     // Total Unread Msgs
 	head    int                     // Location of last unread msg
 	buf     []*QueueMsg             // Ring buffer
-	mu      sync.Mutex              // Manages Queue Internals
+	mu      sync.Mutex              // Protects structs internal to the queue (including SubMetadata)
 	SubMeta map[string]*SubMetadata // Map of sub names to Metadata
 }
 

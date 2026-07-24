@@ -8,7 +8,9 @@ import (
 
 type Broker struct {
 	queues map[string]*Queue
-	mu     sync.Mutex
+
+	// Protects the list of Queues, use whenever accessing the queues
+	mu sync.Mutex
 }
 
 func NewBroker() *Broker {
@@ -18,6 +20,9 @@ func NewBroker() *Broker {
 }
 
 func (b *Broker) Enqueue(name string, payload string) (error, *QueueMsg) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	msg := &QueueMsg{
 		MsgId:   name + "/", //+ uuid.New().String(), // Todo: Replace with non UUID string
 		Payload: payload,
@@ -31,6 +36,9 @@ func (b *Broker) Enqueue(name string, payload string) (error, *QueueMsg) {
 }
 
 func (b *Broker) Dequeue(name string) (error, *QueueMsg) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	err, queue := b.getQueue(name)
 	if err != nil {
 		return err, nil
@@ -80,8 +88,6 @@ func (b *Broker) RemoveSubscriber(subName string, queueName string) error {
 }
 
 func (b *Broker) getQueue(name string) (error, *Queue) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
 	q, exists := b.queues[name]
 	if !exists {
 		return errors.New(fmt.Sprintf("queue %s does not exist", name)), nil
