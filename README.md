@@ -33,7 +33,7 @@ Pub/Sub model concurrently sending messages to each queue's configured subscribe
   - Subscriber policy changes dont affect messages actively in flight
     - Once they are taken off of the queue, the policy is frozen
 
-# Push-MQ Implementation
+## Push-MQ Implementation
 - HTTP server accepting requests for new messages / new queues / new subscribers
 - Messages are placed onto the queue immediately for backpressure (to handle traffic spikes)
 - One Go worker pops off top items on the queue and hands them off to a threadpool to process
