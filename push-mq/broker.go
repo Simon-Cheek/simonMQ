@@ -63,6 +63,7 @@ func (b *Broker) UpdateSubscriber(metadata SubMetadata, queueName string) error 
 		return err
 	}
 	err = queue.updateSubscriber(metadata)
+	return nil
 }
 
 func (b *Broker) RemoveSubscriber(subName string, queueName string) error {
