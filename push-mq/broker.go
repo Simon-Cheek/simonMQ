@@ -56,7 +56,13 @@ func (b *Broker) AddSubscriber(metadata SubMetadata, queueName string) error {
 }
 
 func (b *Broker) UpdateSubscriber(metadata SubMetadata, queueName string) error {
-
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	err, queue := b.getQueue(queueName)
+	if err != nil {
+		return err
+	}
+	err = queue.updateSubscriber(metadata)
 }
 
 func (b *Broker) RemoveSubscriber(subName string, queueName string) error {
