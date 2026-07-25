@@ -24,8 +24,8 @@ type Queue struct {
 type QueueMsg struct {
 	MsgId     string
 	Payload   string
-	ackedSubs map[string]struct{} // Acked or Ran out of Retries (No DLQ yet)
-	retryMap  map[string]int      // Maps Subscriber names to their retry count
+	AckedSubs map[string]struct{} // Acked or Ran out of Retries (No DLQ yet)
+	RetryMap  map[string]int      // Maps Subscriber names to their retry count
 }
 
 func newQueue(name string) *Queue {
@@ -37,6 +37,15 @@ func newQueue(name string) *Queue {
 		SubPolicies: make(map[string]*SubPolicy),
 		hasWork:     make(chan struct{}, 1), // Single Value Channel meant to notify the associated worker
 		isClosed:    make(chan struct{}),
+	}
+}
+
+func newQueueMsg(queueName string, payload string) *QueueMsg {
+	return &QueueMsg{
+		MsgId:     queueName + "/", //+ uuid.New().String(), // Todo: Replace with non UUID string
+		Payload:   payload,
+		AckedSubs: make(map[string]struct{}),
+		RetryMap:  make(map[string]int),
 	}
 }
 

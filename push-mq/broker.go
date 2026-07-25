@@ -58,10 +58,7 @@ func (b *Broker) Enqueue(name string, payload string) (error, *QueueMsg) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	msg := &QueueMsg{
-		MsgId:   name + "/", //+ uuid.New().String(), // Todo: Replace with non UUID string
-		Payload: payload,
-	}
+	msg := newQueueMsg(name, payload)
 	err, queue := b.getQueue(name)
 	if err != nil {
 		return err, nil

@@ -1,6 +1,12 @@
 package main
 
-import "sync"
+import (
+	"bytes"
+	"context"
+	"net/http"
+	"sync"
+	"time"
+)
 
 type deliveryResult struct {
 	subName string
@@ -32,7 +38,7 @@ func (q *Queue) ProcessMsg(msg *QueueMsg) {
 	q.mu.Lock()
 	policyByName := make(map[string]*SubPolicy, len(q.SubPolicies))
 	for name, policy := range q.SubPolicies {
-		if _, ok := msg.ackedSubs[name]; ok {
+		if _, ok := msg.AckedSubs[name]; ok {
 			continue
 		}
 		policyByName[name] = policy
@@ -61,13 +67,13 @@ func (q *Queue) ProcessMsg(msg *QueueMsg) {
 	anySubsRemaining := false
 	for result := range results {
 		if result.success {
-			msg.ackedSubs[result.subName] = struct{}{}
+			msg.AckedSubs[result.subName] = struct{}{}
 		} else {
-			msg.retryMap[result.subName]++
+			msg.RetryMap[result.subName]++
 
 			policy := policyByName[result.subName]
-			if msg.retryMap[result.subName] >= policy.numberOfRetries {
-				msg.ackedSubs[result.subName] = struct{}{}
+			if msg.RetryMap[result.subName] >= policy.numberOfRetries {
+				msg.AckedSubs[result.subName] = struct{}{}
 			} else {
 				anySubsRemaining = true
 			}
@@ -80,7 +86,28 @@ func (q *Queue) ProcessMsg(msg *QueueMsg) {
 	}
 }
 
-// TODO: Implement
 func (q *Queue) SendMsg(sub *SubPolicy, msg *QueueMsg) bool {
+
+	payload := msg.Payload
+	url := sub.subURL
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	urlWithPath := url + "/queue/message"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, urlWithPath, bytes.NewBuffer([]byte(payload)))
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
 	return true
 }
