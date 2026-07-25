@@ -36,7 +36,7 @@ func (b *Broker) HandleEnqueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err, _ = b.Enqueue(name, string(body))
+	err = b.Enqueue(name, string(body))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

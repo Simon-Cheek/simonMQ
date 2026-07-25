@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 )
@@ -26,10 +25,10 @@ func (b *Broker) CreateQueue(name string) error {
 	defer b.mu.Unlock()
 
 	if _, ok := b.queues[name]; ok {
-		return errors.New(fmt.Sprintf("queue %s already exists", name))
+		return fmt.Errorf("queue %s already exists", name)
 	}
 	if b.numQueues >= 128 {
-		return errors.New(fmt.Sprintf("too many queues %d", b.numQueues))
+		return fmt.Errorf("too many queues %d", b.numQueues)
 	}
 
 	newQ := NewQueue(name)
@@ -54,24 +53,24 @@ func (b *Broker) DeleteQueue(name string) {
 	}
 }
 
-func (b *Broker) Enqueue(name string, payload string) (error, *QueueMsg) {
+func (b *Broker) Enqueue(name string, payload string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	msg := NewQueueMsg(name, payload)
-	err, queue := b.getQueue(name)
+	queue, err := b.getQueue(name)
 	if err != nil {
-		return err, nil
+		return err
 	}
 	queue.Add(msg)
-	return nil, msg
+	return nil
 }
 
 func (b *Broker) AddSubscriber(metadata SubPolicy, queueName string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	err, queue := b.getQueue(queueName)
+	queue, err := b.getQueue(queueName)
 	if err != nil {
 		return err
 	}
@@ -87,7 +86,7 @@ func (b *Broker) UpdateSubscriber(metadata SubPolicy, queueName string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	err, queue := b.getQueue(queueName)
+	queue, err := b.getQueue(queueName)
 	if err != nil {
 		return err
 	}
@@ -103,7 +102,7 @@ func (b *Broker) RemoveSubscriber(subName string, queueName string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	err, queue := b.getQueue(queueName)
+	queue, err := b.getQueue(queueName)
 	if err != nil {
 		return err
 	}
@@ -112,10 +111,10 @@ func (b *Broker) RemoveSubscriber(subName string, queueName string) error {
 	return nil
 }
 
-func (b *Broker) getQueue(name string) (error, *Queue) {
+func (b *Broker) getQueue(name string) (*Queue, error) {
 	q, exists := b.queues[name]
 	if !exists {
-		return errors.New(fmt.Sprintf("queue %s does not exist", name)), nil
+		return nil, fmt.Errorf("queue %s does not exist", name)
 	}
-	return nil, q
+	return q, nil
 }
