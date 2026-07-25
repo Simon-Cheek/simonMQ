@@ -27,17 +27,15 @@ Pub/Sub model concurrently sending messages to each queue's configured subscribe
 - Policies
   - Fully in memory (no persistence yet)
   - No Dead Letter System (yet)
-  - Configurable retry system per subscriber (max attempts, retry frequency, etc)
+  - Configurable number of retries per Subscriber per Queue
   - NOT FIFO (messages can deliver out of order even within a queue)
   - At-least-once policy (guaranteed message transfer preferred over preventing duplicates)
   - Subscriber policy changes dont affect messages actively in flight
     - Once they are taken off of the queue, the policy is frozen
 
-## Push-MQ Implementation
-- HTTP server accepting requests for new messages / new queues / new subscribers
-- Messages are placed onto the queue immediately for backpressure (to handle traffic spikes)
-- One Go worker pops off top items on the queue and hands them off to a threadpool to process
-- N concurrent workers attempt to deploy to all subscribers until they all ack / exhaust retries
+## Durable-MQ
+Pub/Sub model identical in functionality to Push-MQ with one core distinction: durable storage.
+- Write Ahead Log (WAL) which is used to rebuild queue and subscriber state after a crash
 
 ## Performance-Tests
 Used to understand the performance differences between the various implementations.
