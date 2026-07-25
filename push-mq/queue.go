@@ -28,7 +28,7 @@ type QueueMsg struct {
 	RetryMap  map[string]int      // Maps Subscriber names to their retry count
 }
 
-func newQueue(name string) *Queue {
+func NewQueue(name string) *Queue {
 	return &Queue{
 		name:        name,
 		count:       0,
@@ -40,7 +40,7 @@ func newQueue(name string) *Queue {
 	}
 }
 
-func newQueueMsg(queueName string, payload string) *QueueMsg {
+func NewQueueMsg(queueName string, payload string) *QueueMsg {
 	return &QueueMsg{
 		MsgId:     queueName + "/", //+ uuid.New().String(), // Todo: Replace with non UUID string
 		Payload:   payload,
@@ -115,7 +115,7 @@ func (q *Queue) copyOver(newBuf []*QueueMsg) {
 	q.head = 0
 }
 
-func (q *Queue) addSubscriber(metadata SubPolicy) error {
+func (q *Queue) AddSubscriber(metadata SubPolicy) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -124,12 +124,12 @@ func (q *Queue) addSubscriber(metadata SubPolicy) error {
 	}
 	initializeDefaultSubMetadataFields(&metadata)
 	subMetaList := q.SubPolicies
-	subMetaList[metadata.subName] = &metadata
+	subMetaList[metadata.SubName] = &metadata
 	return nil
 }
 
 // Check with Workers on concurrency if this ever modifies in place
-func (q *Queue) updateSubscriber(metadata SubPolicy) error {
+func (q *Queue) UpdateSubscriber(metadata SubPolicy) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -138,11 +138,11 @@ func (q *Queue) updateSubscriber(metadata SubPolicy) error {
 	}
 	initializeDefaultSubMetadataFields(&metadata)
 	subMetaList := q.SubPolicies
-	subMetaList[metadata.subName] = &metadata
+	subMetaList[metadata.SubName] = &metadata
 	return nil
 }
 
-func (q *Queue) removeSubscriber(subName string) {
+func (q *Queue) RemoveSubscriber(subName string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -151,19 +151,19 @@ func (q *Queue) removeSubscriber(subName string) {
 }
 
 func initializeDefaultSubMetadataFields(metadata *SubPolicy) {
-	if metadata.numberOfRetries < 0 {
-		metadata.numberOfRetries = 3
+	if metadata.NumberOfRetries < 0 {
+		metadata.NumberOfRetries = 3
 	}
 }
 
 func isValidSubMetadata(metadata SubPolicy) bool {
-	if metadata.subName == "" {
+	if metadata.SubName == "" {
 		return false
 	}
-	if metadata.subURL == "" {
+	if metadata.SubURL == "" {
 		return false
 	}
-	if metadata.numberOfRetries > 100 {
+	if metadata.NumberOfRetries > 100 {
 		return false
 	}
 	return true

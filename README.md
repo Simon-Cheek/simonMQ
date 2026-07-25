@@ -21,9 +21,9 @@ Same as Simple-MQ with concurrency optimizations such as queue specific locks an
 Pub/Sub model concurrently sending messages to each queue's configured subscribers
 - Consumers attach server locations to call a `POST /queue/message` method on for messages
   - Push-MQ automatically calls all consumers and retries if not given a 200 response ("At Least Once" policy)
-- Call `POST /queues/{queueName}/subscribers/{subName}` to register
-- Call `PUT /queues/{queueName}/subscribers/{subName}` to configure individual subscriber policies
-- Call `DELETE /queues/{queueName}/subscribers/{subName}`
+- Call `POST /queues/{queueName}/subscribers/{SubName}` to register
+- Call `PUT /queues/{queueName}/subscribers/{SubName}` to configure individual subscriber policies
+- Call `DELETE /queues/{queueName}/subscribers/{SubName}`
 - Policies
   - Fully in memory (no persistence yet)
   - No Dead Letter System (yet)

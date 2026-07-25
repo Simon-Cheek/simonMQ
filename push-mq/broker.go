@@ -21,7 +21,7 @@ func NewBroker() *Broker {
 	}
 }
 
-func (b *Broker) createQueue(name string) error {
+func (b *Broker) CreateQueue(name string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -32,7 +32,7 @@ func (b *Broker) createQueue(name string) error {
 		return errors.New(fmt.Sprintf("too many queues %d", b.numQueues))
 	}
 
-	newQ := newQueue(name)
+	newQ := NewQueue(name)
 	b.queues[name] = newQ
 	b.numQueues++
 
@@ -42,7 +42,7 @@ func (b *Broker) createQueue(name string) error {
 	return nil
 }
 
-func (b *Broker) deleteQueue(name string) {
+func (b *Broker) DeleteQueue(name string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -58,24 +58,12 @@ func (b *Broker) Enqueue(name string, payload string) (error, *QueueMsg) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	msg := newQueueMsg(name, payload)
+	msg := NewQueueMsg(name, payload)
 	err, queue := b.getQueue(name)
 	if err != nil {
 		return err, nil
 	}
 	queue.Add(msg)
-	return nil, msg
-}
-
-func (b *Broker) Dequeue(name string) (error, *QueueMsg) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	err, queue := b.getQueue(name)
-	if err != nil {
-		return err, nil
-	}
-	msg := queue.Pop()
 	return nil, msg
 }
 
@@ -88,7 +76,7 @@ func (b *Broker) AddSubscriber(metadata SubPolicy, queueName string) error {
 		return err
 	}
 
-	err = queue.addSubscriber(metadata)
+	err = queue.AddSubscriber(metadata)
 	if err != nil {
 		return err
 	}
@@ -102,7 +90,7 @@ func (b *Broker) UpdateSubscriber(metadata SubPolicy, queueName string) error {
 	if err != nil {
 		return err
 	}
-	err = queue.updateSubscriber(metadata)
+	err = queue.UpdateSubscriber(metadata)
 	return nil
 }
 
@@ -115,7 +103,7 @@ func (b *Broker) RemoveSubscriber(subName string, queueName string) error {
 		return err
 	}
 
-	queue.removeSubscriber(subName)
+	queue.RemoveSubscriber(subName)
 	return nil
 }
 

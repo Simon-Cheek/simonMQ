@@ -1,7 +1,7 @@
 package main
 
 type SubPolicy struct {
-	subName         string
-	subURL          string // URL to call POST /queue/message on
-	numberOfRetries int
+	SubName         string
+	SubURL          string // URL to call POST /queue/message on
+	NumberOfRetries int
 }

@@ -57,7 +57,7 @@ func (q *Queue) ProcessMsg(msg *QueueMsg) {
 		go func(sub *SubPolicy) {
 			defer wg.Done()
 			ok := q.SendMsg(sub, msg)
-			results <- deliveryResult{subName: sub.subName, success: ok}
+			results <- deliveryResult{subName: sub.SubName, success: ok}
 		}(sub)
 	}
 	wg.Wait()
@@ -72,7 +72,7 @@ func (q *Queue) ProcessMsg(msg *QueueMsg) {
 			msg.RetryMap[result.subName]++
 
 			policy := policyByName[result.subName]
-			if msg.RetryMap[result.subName] >= policy.numberOfRetries {
+			if msg.RetryMap[result.subName] >= policy.NumberOfRetries {
 				msg.AckedSubs[result.subName] = struct{}{}
 			} else {
 				anySubsRemaining = true
@@ -89,7 +89,7 @@ func (q *Queue) ProcessMsg(msg *QueueMsg) {
 func (q *Queue) SendMsg(sub *SubPolicy, msg *QueueMsg) bool {
 
 	payload := msg.Payload
-	url := sub.subURL
+	url := sub.SubURL
 	client := &http.Client{
 		Timeout: time.Second * 10,
 	}
