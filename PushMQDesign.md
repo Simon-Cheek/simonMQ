@@ -1,4 +1,4 @@
-# Pub/Sub SimonMQ — Design
+# PushMQ — Design
 
 ## Architecture
 One broker manages a collection of queues (max 128). Each queue has its own independent buffer, concurrency, subscriber policies, and worker.
