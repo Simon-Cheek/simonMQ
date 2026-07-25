@@ -16,6 +16,10 @@ type Queue struct {
 	buf         []*QueueMsg           // Ring buffer
 	mu          sync.Mutex            // Protects structs internal to the queue (including SubPolicy)
 	SubPolicies map[string]*SubPolicy // Map of sub names to Metadata
+
+	// Worker Management
+	hasWork  chan struct{}
+	isClosed chan struct{}
 }
 
 type QueueMsg struct {
@@ -38,6 +42,8 @@ func newQueue(name string) *Queue {
 		head:        0,
 		buf:         make([]*QueueMsg, initialCapacity),
 		SubPolicies: make(map[string]*SubPolicy),
+		hasWork:     make(chan struct{}, 1), // Single Value Channel meant to notify the associated worker
+		isClosed:    make(chan struct{}),
 	}
 }
 
@@ -52,6 +58,13 @@ func (q *Queue) Add(msg *QueueMsg) {
 	if q.count >= len(q.buf) {
 		q.grow()
 	}
+
+	// Notify associated worker if sleeping
+	select {
+	case q.hasWork <- struct{}{}:
+	default: // Move on if it would block
+	}
+
 }
 
 func (q *Queue) Pop() *QueueMsg {

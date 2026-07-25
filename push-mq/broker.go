@@ -7,7 +7,8 @@ import (
 )
 
 type Broker struct {
-	queues map[string]*Queue
+	queues    map[string]*Queue
+	numQueues int
 
 	// Protects the list of Queues, use whenever accessing the queues
 	mu sync.Mutex
@@ -15,7 +16,41 @@ type Broker struct {
 
 func NewBroker() *Broker {
 	return &Broker{
-		queues: make(map[string]*Queue),
+		queues:    make(map[string]*Queue),
+		numQueues: 0,
+	}
+}
+
+func (b *Broker) createQueue(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if _, ok := b.queues[name]; ok {
+		return errors.New(fmt.Sprintf("queue %s already exists", name))
+	}
+	if b.numQueues >= 128 {
+		return errors.New(fmt.Sprintf("too many queues %d", b.numQueues))
+	}
+
+	newQ := newQueue(name)
+	b.queues[name] = newQ
+	b.numQueues++
+
+	// Fire off attached worker
+	go newQ.RunQueueWorker()
+
+	return nil
+}
+
+func (b *Broker) deleteQueue(name string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	queue, ok := b.queues[name]
+	if ok {
+		delete(b.queues, name)
+		b.numQueues--
+		close(queue.isClosed)
 	}
 }
 

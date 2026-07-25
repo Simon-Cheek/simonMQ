@@ -1,5 +1,20 @@
 package main
 
-// Threadpool of workers grabbing items from the queue and processing them
-// Have concurrency / scheduling logic within this file, but NOT actual processing
-// TODO: Use GO channels to implement
+func (q *Queue) RunQueueWorker() {
+	for {
+		for {
+			msg := q.Pop()
+			if msg == nil {
+				break
+			}
+			// process msg (later)
+		}
+
+		select {
+		case <-q.hasWork:
+			// loop back, go pop again
+		case <-q.isClosed:
+			return
+		}
+	}
+}
