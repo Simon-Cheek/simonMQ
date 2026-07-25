@@ -86,11 +86,16 @@ func (b *Broker) AddSubscriber(metadata SubPolicy, queueName string) error {
 func (b *Broker) UpdateSubscriber(metadata SubPolicy, queueName string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	err, queue := b.getQueue(queueName)
 	if err != nil {
 		return err
 	}
+
 	err = queue.UpdateSubscriber(metadata)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
