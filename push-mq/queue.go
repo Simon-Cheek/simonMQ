@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 )
 
 const initialCapacity = 10
@@ -25,14 +24,8 @@ type Queue struct {
 type QueueMsg struct {
 	MsgId     string
 	Payload   string
-	ackedSubs map[string]struct{}                  // Acked or Ran out of Retries (No DLQ yet)
-	metadata  map[string]*QueueMsgDeliveryMetadata // Maps Subscriber names to their metadata
-}
-
-type QueueMsgDeliveryMetadata struct {
-	retryCount            int
-	lastRetry             time.Time
-	deliverySuccessStatus bool // Remains false if retries are exceeded
+	ackedSubs map[string]struct{} // Acked or Ran out of Retries (No DLQ yet)
+	retryMap  map[string]int      // Maps Subscriber names to their retry count
 }
 
 func newQueue(name string) *Queue {
@@ -126,6 +119,7 @@ func (q *Queue) addSubscriber(metadata SubPolicy) error {
 	return nil
 }
 
+// Check with Workers on concurrency if this ever modifies in place
 func (q *Queue) updateSubscriber(metadata SubPolicy) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
