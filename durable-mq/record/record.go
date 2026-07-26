@@ -1,4 +1,4 @@
-package durable_mq
+package record
 
 import (
 	"encoding/binary"
@@ -60,7 +60,6 @@ func Decode(data []byte) (*Record, error) {
 
 	opType := OpType(data[12])
 	queueNameLen := int(binary.LittleEndian.Uint32(data[13:17]))
-
 	queueName := string(data[17 : 17+queueNameLen]) // string() conversion copies, safe against buffer reuse
 
 	payloadStart := 17 + queueNameLen
