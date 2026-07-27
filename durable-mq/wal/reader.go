@@ -3,6 +3,7 @@ package wal
 import (
 	"durable-mq/record"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 )
@@ -19,27 +20,38 @@ func OpenReader(filename string) (*Reader, error) {
 	return &Reader{file}, nil
 }
 
+func (r *Reader) Close() error {
+	return r.file.Close()
+}
+
+// Any Log bigger than this likely means some sort of corrupt data issue
+const maxLogLength = 16 * 1024 * 1024
+
+// TODO: Add logic to handle hardware corruption, checksum corruption, etc
 func (r *Reader) ReadAll() ([]*record.Record, error) {
 	var records []*record.Record
 
 	for {
 		header := make([]byte, 12) // Enough to hold LSN and length indicator
-		n, err := io.ReadFull(r.file, header)
-		if err == io.EOF || err == io.ErrUnexpectedEOF || n != 12 {
+		_, err := io.ReadFull(r.file, header)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return records, err
 		}
 		remainingLength := binary.LittleEndian.Uint32(header[8:12])
+		if remainingLength > maxLogLength {
+			return records, fmt.Errorf("wal log over max header length: %d", remainingLength)
+		}
 
 		remaining := make([]byte, remainingLength)
-		n, err = io.ReadFull(r.file, remaining)
-		if err == io.EOF || err == io.ErrUnexpectedEOF || n < int(remainingLength) {
+		_, err = io.ReadFull(r.file, remaining)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return records, err
 		}
 		recordBytes := append(header, remaining...)
 		rec, err := record.Decode(recordBytes)
