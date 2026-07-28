@@ -29,5 +29,7 @@ Work Todo: Eventual Features
     - Mainly messages in flight + ACK status
 - Catalog
   - Handles queue registry and subscriber policy state
+- Coordinator
+  - Manages shared state between Delivery / Catalog
 - Queue
   - Actual in memory queue impl
