@@ -6,68 +6,64 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 )
 
-type Reader struct {
-	dir      string
-	segments []string
-	idx      int
-	file     *os.File
-}
-
-// Any Log bigger than this likely means some sort of corrupt data issue
 const maxLogLength = 16 * 1024 * 1024
 
-func OpenReader(dir string) (*Reader, error) {
-	segs, err := listSegments(dir)
-	if err != nil {
-		return nil, err
-	}
+type Reader struct {
+	sm      *SegmentManager
+	current string // name of the currently-open segment
+	file    *os.File
+}
 
-	r := &Reader{dir: dir, segments: segs}
-	if len(segs) > 0 {
-		if err := r.openSegment(0); err != nil {
-			return nil, err
-		}
+// OpenReader opens the first segment known to sm, if any exist.
+func OpenReader(sm *SegmentManager) (*Reader, error) {
+	r := &Reader{sm: sm}
+	segs := sm.Segments()
+	if len(segs) == 0 {
+		return r, nil // empty WAL — ReadAll will just return nothing
+	}
+	if err := r.openSegment(segs[0]); err != nil {
+		return nil, err
 	}
 	return r, nil
 }
 
-func (r *Reader) openSegment(idx int) error {
-	f, err := os.Open(filepath.Join(r.dir, r.segments[idx]))
+func (r *Reader) openSegment(name string) error {
+	f, err := r.sm.OpenSegment(name)
 	if err != nil {
 		return err
 	}
+	if r.file != nil {
+		r.file.Close()
+	}
 	r.file = f
-	r.idx = idx
+	r.current = name
 	return nil
 }
 
+// isLastSegment consults the manager live, rather than a frozen list.
 func (r *Reader) isLastSegment() bool {
-	return r.idx == len(r.segments)-1
+	_, ok := r.sm.SegmentAfter(r.current)
+	return !ok
 }
 
-// TODO: Add logic to handle hardware corruption, checksum corruption, etc
-// TODO: Add ReadAll() version that streams / iterates
 func (r *Reader) ReadAll() ([]*record.Record, error) {
 	var records []*record.Record
 
-	if len(r.segments) == 0 {
-		return records, nil
-	}
-	if err := r.openSegment(0); err != nil {
-		return nil, err
+	if r.file == nil {
+		return records, nil // nothing to read
 	}
 
 	for {
 		header := make([]byte, 12)
 		_, err := io.ReadFull(r.file, header)
 		if err == io.EOF {
-			if r.isLastSegment() {
+			next, ok := r.sm.SegmentAfter(r.current)
+			if !ok {
 				return records, nil
 			}
-			if err := r.openSegment(r.idx + 1); err != nil {
+			if err := r.openSegment(next); err != nil {
 				return nil, err
 			}
 			continue
@@ -76,7 +72,7 @@ func (r *Reader) ReadAll() ([]*record.Record, error) {
 			if r.isLastSegment() {
 				return records, nil
 			}
-			return records, fmt.Errorf("unexpected partial record in non-final segment %s", r.segments[r.idx])
+			return records, fmt.Errorf("unexpected partial record in non-final segment %s", r.current)
 		}
 		if err != nil {
 			return records, err
@@ -93,7 +89,7 @@ func (r *Reader) ReadAll() ([]*record.Record, error) {
 			if r.isLastSegment() {
 				return records, nil
 			}
-			return records, fmt.Errorf("unexpected partial record in non-final segment %s", r.segments[r.idx])
+			return records, fmt.Errorf("unexpected partial record in non-final segment %s", r.current)
 		}
 		if err != nil {
 			return records, err
@@ -102,9 +98,16 @@ func (r *Reader) ReadAll() ([]*record.Record, error) {
 		recordBytes := append(header, remaining...)
 		rec, err := record.Decode(recordBytes)
 		if err != nil {
-			break
+			break // CRC mismatch
 		}
 		records = append(records, rec)
 	}
 	return records, nil
+}
+
+func (r *Reader) Close() error {
+	if r.file == nil {
+		return nil
+	}
+	return r.file.Close()
 }
