@@ -3,9 +3,9 @@ package catalog
 import "encoding/json"
 
 type SubPolicy struct {
-	SubName         string `json:"subName"`
-	SubURL          string `json:"subURL"` // URL to call POST /queue/message on
-	NumberOfRetries int    `json:"numberOfRetries"`
+	SubName         string `json:"SubName"`
+	SubURL          string `json:"SubURL"` // URL to call POST /queue/message on
+	NumberOfRetries int    `json:"NumberOfRetries"`
 }
 
 func encodeSubPolicy(p SubPolicy) ([]byte, error) {
