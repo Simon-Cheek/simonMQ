@@ -52,7 +52,7 @@ func (r *Reader) ReadAll() ([]*record.Record, error) {
 	var records []*record.Record
 
 	if r.file == nil {
-		return records, nil // nothing to read
+		return records, nil
 	}
 
 	for {

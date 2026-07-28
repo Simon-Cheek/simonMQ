@@ -14,13 +14,19 @@ type Writer struct {
 	nextLSN     uint64
 }
 
-// OpenWriter starts a fresh writer against sm, beginning a new segment at LSN 1
+// OpenWriter resumes from whatever sm.Recover() finds on disk
 func OpenWriter(sm *SegmentManager, maxSegSize int64) (*Writer, error) {
-	w := &Writer{sm: sm, maxSegSize: maxSegSize, nextLSN: 1}
-	if err := w.rollSegment(); err != nil {
+	rs, err := sm.Recover()
+	if err != nil {
 		return nil, err
 	}
-	return w, nil
+	return &Writer{
+		sm:          sm,
+		file:        rs.File,
+		currentSize: rs.Size,
+		maxSegSize:  maxSegSize,
+		nextLSN:     rs.NextLSN,
+	}, nil
 }
 
 func (w *Writer) rollSegment() error {
