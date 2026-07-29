@@ -11,6 +11,10 @@ type Catalog struct {
 	mu     sync.Mutex
 }
 
+func NewCatalog() *Catalog {
+	return &Catalog{queues: make(map[string]*QueueInfo)}
+}
+
 type QueueInfo struct {
 	name        string
 	subPolicies map[string]SubPolicy
