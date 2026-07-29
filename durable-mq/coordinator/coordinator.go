@@ -9,6 +9,9 @@ import (
 	"sync"
 )
 
+// Coordinator manages the initial replay of the WAL
+// Acts as a wrapper of WAL for writes during queue runtime
+// Acts as a wrapper of Catalog as well, coordinating Queue and Sub Metadata
 type Coordinator struct {
 	log  *wal.WAL
 	cat  *catalog.Catalog
