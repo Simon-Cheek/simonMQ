@@ -3,11 +3,12 @@ package delivery
 import (
 	"durable-mq/record"
 	"fmt"
-	"sync"
 )
 
+// Delivery is only used for startup by a single thread to refresh WAL data
+// So it has no need for concurrency mgmt
+// It has no live state mgmt of the queue
 type Delivery struct {
-	mu     sync.Mutex
 	queues map[string]*DeliveryQueueInfo
 }
 
@@ -55,9 +56,6 @@ func (d *Delivery) ProcessEnqueue(rec record.Record, subList []string) error {
 	msgId, content := enq.MsgId, enq.MsgContent
 	queueName := rec.QueueName
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	if _, ok := d.queues[queueName]; !ok {
 		d.queues[queueName] = NewDeliveryQueueInfo()
 	}
@@ -85,9 +83,6 @@ func (d *Delivery) ProcessAck(rec record.Record) error {
 	msgId, subName := ack.MsgId, ack.SubName
 	queueName := rec.QueueName
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	// Queue and Msg should already exist: if not, error
 	if _, ok := d.queues[queueName]; !ok {
 		return fmt.Errorf("message not found queueName: %v", queueName)
@@ -102,4 +97,8 @@ func (d *Delivery) ProcessAck(rec record.Record) error {
 	}
 	msgInfo.ackedSubs[subName] = struct{}{}
 	return nil
+}
+
+func (d *Delivery) YieldDeliveryData() map[string]*DeliveryQueueInfo {
+	return d.queues
 }

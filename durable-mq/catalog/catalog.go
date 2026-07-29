@@ -45,7 +45,25 @@ func (c *Catalog) ProcessRecord(rec record.Record) error {
 		return fmt.Errorf("invalid optype passed to ProcessRecord: %v", optype)
 
 	}
+}
 
+// ReturnQueueResults returns a snapshot (fully copied) of the Queue
+func (c *Catalog) ReturnQueueResults() map[string]QueueInfo {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	result := make(map[string]QueueInfo, len(c.queues))
+	for queueName, q := range c.queues {
+		subPoliciesCopy := make(map[string]SubPolicy, len(q.subPolicies))
+		for subName, policy := range q.subPolicies {
+			subPoliciesCopy[subName] = policy
+		}
+		result[queueName] = QueueInfo{
+			name:        q.name,
+			subPolicies: subPoliciesCopy,
+		}
+	}
+	return result
 }
 
 func (c *Catalog) createQueue(queueName string) {
@@ -58,6 +76,20 @@ func (c *Catalog) removeQueue(queueName string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.queues, queueName)
+}
+
+func (c *Catalog) FetchQueueSubList(queueName string) ([]string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	q, ok := c.queues[queueName]
+	if !ok {
+		return nil, false
+	}
+	subNames := make([]string, 0, len(q.subPolicies))
+	for subName := range q.subPolicies {
+		subNames = append(subNames, subName)
+	}
+	return subNames, true
 }
 
 func (c *Catalog) updateSubPolicy(queueName string, payload []byte) error {
