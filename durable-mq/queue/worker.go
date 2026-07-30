@@ -113,7 +113,7 @@ func (q *Queue) sendMsg(sub *catalog.SubPolicy, msg *QueueMsg) bool {
 		return false
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return false
 	}
 	return true
