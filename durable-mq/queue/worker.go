@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"durable-mq/catalog"
 	"net/http"
 	"sync"
 	"time"
@@ -33,60 +34,66 @@ func (q *Queue) RunQueueWorker() {
 }
 
 func (q *Queue) ProcessMsg(msg *QueueMsg) {
-
-	// Obtain list of non-acked Subs
-	q.mu.Lock()
-	policyByName := make(map[string]*SubPolicy, len(q.SubPolicies))
-	for name, policy := range q.SubPolicies {
+	// Obtain list of non-acked Subs from the message's own snapshot —
+	// no catalog/queue lock needed, this is per-message immutable data
+	policyByName := make(map[string]catalog.SubPolicy, len(msg.SubPolicySnapshot))
+	for name, policy := range msg.SubPolicySnapshot {
 		if _, ok := msg.AckedSubs[name]; ok {
 			continue
 		}
 		policyByName[name] = policy
 	}
-	q.mu.Unlock()
 
 	if len(policyByName) == 0 {
 		return
 	}
 
-	// For each, retry request
 	results := make(chan deliveryResult, len(policyByName))
 	var wg sync.WaitGroup
 	for _, sub := range policyByName {
 		wg.Add(1)
-		go func(sub *SubPolicy) {
+		go func(sub catalog.SubPolicy) {
 			defer wg.Done()
-			ok := q.sendMsg(sub, msg)
+			ok := q.sendMsg(&sub, msg)
 			results <- deliveryResult{subName: sub.SubName, success: ok}
 		}(sub)
 	}
 	wg.Wait()
 	close(results)
 
-	// Increment retry on each, add to acked-subs if retry limit reached or success
 	anySubsRemaining := false
 	for result := range results {
+		acked := false
 		if result.success {
-			msg.AckedSubs[result.subName] = struct{}{}
+			acked = true
 		} else {
 			msg.RetryMap[result.subName]++
-
 			policy := policyByName[result.subName]
 			if msg.RetryMap[result.subName] >= policy.NumberOfRetries {
-				msg.AckedSubs[result.subName] = struct{}{}
-			} else {
-				anySubsRemaining = true
+				acked = true // giving up counts as "done" for this subscriber
 			}
+		}
+
+		if acked {
+			if err := q.onAck(msg.MsgId, result.subName); err != nil {
+				// WAL append failed — don't mark acked in memory;
+				// safe to retry next pass rather than risk an
+				// in-memory ack the durable log never recorded
+				anySubsRemaining = true
+				continue
+			}
+			msg.AckedSubs[result.subName] = struct{}{}
+		} else {
+			anySubsRemaining = true
 		}
 	}
 
-	// Requeue if any failed retries under associated limit
 	if anySubsRemaining {
 		q.Add(msg)
 	}
 }
 
-func (q *Queue) sendMsg(sub *SubPolicy, msg *QueueMsg) bool {
+func (q *Queue) sendMsg(sub *catalog.SubPolicy, msg *QueueMsg) bool {
 
 	payload := msg.Payload
 	url := sub.SubURL

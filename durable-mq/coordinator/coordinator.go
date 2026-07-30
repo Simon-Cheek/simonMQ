@@ -89,6 +89,9 @@ func (c *Coordinator) handleEnqueue(rec record.Record) error {
 	return c.deli.ProcessEnqueue(rec, subList)
 }
 
+// The following methods are exposed to the Broker to call to write down to the WAL
+// And to store Queue/Sub Data in Catalog
+
 func (c *Coordinator) CreateQueue(queueName string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -165,4 +168,50 @@ func (c *Coordinator) DeleteSubPolicy(queueName string, subName string) error {
 		return err
 	}
 	return c.cat.ProcessRecord(*rec)
+}
+
+func (c *Coordinator) Enqueue(queueName string, msgId string, content string) ([]catalog.SubPolicy, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.cat.QueueExists(queueName) {
+		return nil, fmt.Errorf("queue %s not found", queueName)
+	}
+
+	payload, err := delivery.EncodeEnqueue(delivery.Enqueue{MsgId: msgId, MsgContent: content})
+	if err != nil {
+		return nil, err
+	}
+	rec := &record.Record{
+		OpType:    record.OpEnqueue,
+		QueueName: queueName,
+		Payload:   payload,
+	}
+	if _, err := c.log.Append(rec); err != nil {
+		return nil, err
+	}
+
+	subList, ok := c.cat.FetchQueueSubList(queueName)
+	if !ok {
+		// Queue existed moments ago under the same lock — this shouldn't happen
+		return nil, fmt.Errorf("queue %s disappeared during enqueue", queueName)
+	}
+	return subList, nil
+}
+
+func (c *Coordinator) Ack(queueName string, msgId string, subName string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	payload, err := delivery.EncodeAck(delivery.Ack{MsgId: msgId, SubName: subName})
+	if err != nil {
+		return err
+	}
+	rec := &record.Record{
+		OpType:    record.OpAck,
+		QueueName: queueName,
+		Payload:   payload,
+	}
+	_, err = c.log.Append(rec)
+	return err
 }

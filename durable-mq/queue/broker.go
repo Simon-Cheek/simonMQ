@@ -5,6 +5,8 @@ import (
 	"durable-mq/coordinator"
 	"fmt"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 type Broker struct {
@@ -12,7 +14,6 @@ type Broker struct {
 	numQueues int
 	cord      *coordinator.Coordinator
 
-	// Protects the list of Queues, use whenever accessing the queues
 	mu sync.Mutex
 }
 
@@ -29,14 +30,12 @@ func NewBroker() *Broker {
 }
 
 func (b *Broker) RestoreWAL() error {
-	
 	qs, dInfo, err := b.cord.ReplayLog()
 	if err != nil {
 		return err
 	}
 	for _, qName := range qs {
-		err = b.CreateQueue(qName, true)
-		if err != nil {
+		if err := b.CreateQueue(qName, true); err != nil {
 			continue
 		}
 	}
@@ -44,15 +43,14 @@ func (b *Broker) RestoreWAL() error {
 		if _, ok := b.queues[qName]; !ok {
 			continue
 		}
-		for _, msgInfo := range di.Messages {
+		for msgId, msgInfo := range di.Messages {
 			content := msgInfo.Content
 			subList := msgInfo.SubList
 			ackedSubs := msgInfo.AckedSubs
 
-			// Don't queue msg if all subs have acked
 			hasUnackedSubs := false
-			for _, sub := range subList {
-				if _, ok := ackedSubs[sub.SubName]; !ok {
+			for subName := range subList {
+				if _, ok := ackedSubs[subName]; !ok {
 					hasUnackedSubs = true
 					break
 				}
@@ -60,7 +58,7 @@ func (b *Broker) RestoreWAL() error {
 			if !hasUnackedSubs {
 				continue
 			}
-			b.EnqueueFromWAL(qName, content, subList)
+			b.EnqueueFromWAL(qName, msgId, content, subList, ackedSubs)
 		}
 	}
 	return nil
@@ -77,40 +75,88 @@ func (b *Broker) CreateQueue(name string, fromWAL bool) error {
 		return fmt.Errorf("too many queues %d", b.numQueues)
 	}
 
-	newQ := NewQueue(name)
+	if !fromWAL {
+		if err := b.cord.CreateQueue(name); err != nil {
+			return err
+		}
+	}
+
+	newQ := NewQueue(name, func(msgId, subName string) error {
+		return b.cord.Ack(name, msgId, subName)
+	})
 	b.queues[name] = newQ
 	b.numQueues++
 
-	// Fire off attached worker
 	go newQ.RunQueueWorker()
-
-	if !fromWAL {
-		// b.cord. CREATE QUEUE
-	}
 
 	return nil
 }
 
-func (b *Broker) DeleteQueue(name string) {
+func (b *Broker) DeleteQueue(name string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if _, ok := b.queues[name]; ok {
-		delete(b.queues, name)
+
+	q, ok := b.queues[name]
+	if !ok {
+		return fmt.Errorf("queue %s not found", name)
 	}
-	b.cord.DeleteQueue(name)
+
+	if err := b.cord.DeleteQueue(name); err != nil {
+		return err
+	}
+
+	delete(b.queues, name)
+	b.numQueues--
+	close(q.isClosed) // stop the worker goroutine
+
+	return nil
 }
 
 func (b *Broker) Enqueue(queueName string, payload string) error {
+	b.mu.Lock()
+	q, ok := b.queues[queueName]
+	b.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("queue %s not found", queueName)
+	}
+
+	msgId := queueName + "-" + uuid.New().String()
+
+	subPolicies, err := b.cord.Enqueue(queueName, msgId, payload)
+	if err != nil {
+		return err
+	}
+
+	subSnapshot := make(map[string]catalog.SubPolicy, len(subPolicies))
+	for _, sp := range subPolicies {
+		subSnapshot[sp.SubName] = sp
+	}
+
+	msg := NewQueueMsg(msgId, payload, subSnapshot, nil)
+	q.Add(msg)
+	return nil
 }
 
-func (b *Broker) EnqueueFromWAL(queueName string, payload string, subPolicies map[string]catalog.SubPolicy) {
+func (b *Broker) EnqueueFromWAL(queueName string, msgId string, payload string,
+	subPolicies map[string]catalog.SubPolicy, ackedSubs map[string]struct{}) {
+	b.mu.Lock()
+	q, ok := b.queues[queueName]
+	b.mu.Unlock()
+	if !ok {
+		return
+	}
+	msg := NewQueueMsg(msgId, payload, subPolicies, ackedSubs)
+	q.Add(msg)
 }
 
 func (b *Broker) AddSubscriber(metadata catalog.SubPolicy, queueName string) error {
+	return b.cord.UpdateSubPolicy(queueName, metadata)
 }
 
 func (b *Broker) UpdateSubscriber(metadata catalog.SubPolicy, queueName string) error {
+	return b.cord.UpdateSubPolicy(queueName, metadata)
 }
 
 func (b *Broker) RemoveSubscriber(subName string, queueName string) error {
+	return b.cord.DeleteSubPolicy(queueName, subName)
 }

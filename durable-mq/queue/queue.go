@@ -10,14 +10,27 @@ const initialCapacity = 10
 
 type Queue struct {
 	name  string
-	count int         // Total Unread Msgs
-	head  int         // Location of last unread msg
-	buf   []*QueueMsg // Ring buffer
-	mu    sync.Mutex  // Protects structs internal to the queue (including SubPolicy)
+	count int
+	head  int
+	buf   []*QueueMsg
+	mu    sync.Mutex
 
-	// Worker Management
 	hasWork  chan struct{}
 	isClosed chan struct{}
+
+	onAck func(msgId, subName string) error // logs an ack durably via Coordinator
+}
+
+func NewQueue(name string, onAck func(msgId, subName string) error) *Queue {
+	return &Queue{
+		name:     name,
+		count:    0,
+		head:     0,
+		buf:      make([]*QueueMsg, initialCapacity),
+		hasWork:  make(chan struct{}, 1),
+		isClosed: make(chan struct{}),
+		onAck:    onAck,
+	}
 }
 
 type QueueMsg struct {
@@ -28,23 +41,16 @@ type QueueMsg struct {
 	SubPolicySnapshot map[string]catalog.SubPolicy
 }
 
-func NewQueue(name string) *Queue {
-	return &Queue{
-		name:     name,
-		count:    0,
-		head:     0,
-		buf:      make([]*QueueMsg, initialCapacity),
-		hasWork:  make(chan struct{}, 1), // Single Value Channel meant to notify the associated worker
-		isClosed: make(chan struct{}),
+func NewQueueMsg(msgId string, payload string, subPolicySnapshot map[string]catalog.SubPolicy, ackedSubs map[string]struct{}) *QueueMsg {
+	if ackedSubs == nil {
+		ackedSubs = make(map[string]struct{})
 	}
-}
-
-func NewQueueMsg(queueName string, payload string) *QueueMsg {
 	return &QueueMsg{
-		MsgId:     queueName + "/", //+ uuid.New().String(), // Todo: Replace with non UUID string
-		Payload:   payload,
-		AckedSubs: make(map[string]struct{}),
-		RetryMap:  make(map[string]int),
+		MsgId:             msgId,
+		Payload:           payload,
+		AckedSubs:         ackedSubs,
+		RetryMap:          make(map[string]int),
+		SubPolicySnapshot: subPolicySnapshot,
 	}
 }
 
