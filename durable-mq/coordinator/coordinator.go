@@ -20,7 +20,7 @@ type Coordinator struct {
 }
 
 // WAL Config
-const walDirectory = ""
+const walDirectory = "durable-wal"
 const maxLogSize = 16 * 8 * 1024 * 1024 // 16MB
 
 func NewCoordinator() (*Coordinator, error) {

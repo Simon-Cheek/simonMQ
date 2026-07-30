@@ -26,6 +26,9 @@ type RecoveryState struct {
 }
 
 func NewSegmentManager(dir string) (*SegmentManager, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
 	sm := &SegmentManager{dir: dir}
 	if err := sm.refresh(); err != nil {
 		return nil, err
