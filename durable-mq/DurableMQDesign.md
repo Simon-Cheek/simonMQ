@@ -8,7 +8,6 @@ There is some intermediate state, such as a message which has been acknowledged 
 More detailed information on the Write Ahead Log (WAL) can be found in `./WalDesign.md`.
 
 ## General Structure
-
 `durable-MQ` is split into various packages which act as hierarchical layers that each manage a different aspect of the system.
 
 - Record
@@ -28,6 +27,9 @@ More detailed information on the Write Ahead Log (WAL) can be found in `./WalDes
 - Server (not a subpackage)
   - Runs the HTTP server, exposes routes to network
 
+## Policies
+- TODO
+
 ### Upcoming Features (todo)
 - Double check graceful handling of corrupted records in WAL
 - More granular locks in `catalog` for greater performance
@@ -35,19 +37,3 @@ More detailed information on the Write Ahead Log (WAL) can be found in `./WalDes
 - Preserve retry attempt #s for unACKed subscribers on crash + restart
   - Currently only preserves which subscribers have ACKed
 - Checkpointing system in `segment-mgr` (WAL does not currently checkpoint / compact)
-
-### Structure
-- Record
-  - Handles serializing log records into bytes
-- Wal
-  - Handles reading and writing to the log files
-  - Handles management of log files + compaction
-- Delivery
-  - Handles rebuilding application state from WAL
-    - Mainly Messages in flight + ACK status
-- Catalog
-  - Handles queue registry and subscriber policy state
-- Coordinator
-  - Manages shared state between Delivery / Catalog
-- Queue
-  - Actual in memory queue impl
