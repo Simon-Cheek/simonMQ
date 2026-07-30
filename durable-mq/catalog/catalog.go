@@ -6,6 +6,7 @@ import (
 	"sync"
 )
 
+// TODO: Consider more granular locking for performance
 type Catalog struct {
 	queues map[string]*QueueInfo
 	mu     sync.Mutex
@@ -16,14 +17,14 @@ func NewCatalog() *Catalog {
 }
 
 type QueueInfo struct {
-	name        string
-	subPolicies map[string]SubPolicy
+	Name        string
+	SubPolicies map[string]SubPolicy
 }
 
 func NewQueueInfo(name string) *QueueInfo {
 	return &QueueInfo{
-		name:        name,
-		subPolicies: make(map[string]SubPolicy),
+		Name:        name,
+		SubPolicies: make(map[string]SubPolicy),
 	}
 }
 
@@ -47,23 +48,23 @@ func (c *Catalog) ProcessRecord(rec record.Record) error {
 	}
 }
 
-// ReturnQueueResults returns a snapshot (fully copied) of the Queue
-func (c *Catalog) ReturnQueueResults() map[string]QueueInfo {
+// ReturnQueueNames returns the set of currently known queue names
+func (c *Catalog) ReturnQueueNames() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	result := make(map[string]QueueInfo, len(c.queues))
-	for queueName, q := range c.queues {
-		subPoliciesCopy := make(map[string]SubPolicy, len(q.subPolicies))
-		for subName, policy := range q.subPolicies {
-			subPoliciesCopy[subName] = policy
-		}
-		result[queueName] = QueueInfo{
-			name:        q.name,
-			subPolicies: subPoliciesCopy,
-		}
+	names := make([]string, 0, len(c.queues))
+	for queueName := range c.queues {
+		names = append(names, queueName)
 	}
-	return result
+	return names
+}
+
+func (c *Catalog) QueueExists(queueName string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.queues[queueName]
+	return ok
 }
 
 func (c *Catalog) createQueue(queueName string) {
@@ -78,22 +79,22 @@ func (c *Catalog) removeQueue(queueName string) {
 	delete(c.queues, queueName)
 }
 
-func (c *Catalog) FetchQueueSubList(queueName string) ([]string, bool) {
+func (c *Catalog) FetchQueueSubList(queueName string) ([]SubPolicy, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	q, ok := c.queues[queueName]
 	if !ok {
 		return nil, false
 	}
-	subNames := make([]string, 0, len(q.subPolicies))
-	for subName := range q.subPolicies {
-		subNames = append(subNames, subName)
+	policies := make([]SubPolicy, 0, len(q.SubPolicies))
+	for _, policy := range q.SubPolicies {
+		policies = append(policies, policy)
 	}
-	return subNames, true
+	return policies, true
 }
 
 func (c *Catalog) updateSubPolicy(queueName string, payload []byte) error {
-	subPolicy, err := decodeSubPolicy(payload)
+	subPolicy, err := DecodeSubPolicy(payload)
 	if err != nil {
 		return err
 	}
@@ -103,12 +104,12 @@ func (c *Catalog) updateSubPolicy(queueName string, payload []byte) error {
 	if !ok {
 		return fmt.Errorf("queue %s not found", queueName)
 	}
-	queue.subPolicies[subPolicy.SubName] = subPolicy
+	queue.SubPolicies[subPolicy.SubName] = subPolicy
 	return nil
 }
 
 func (c *Catalog) removeSubPolicy(queueName string, payload []byte) error {
-	subPolicy, err := decodeSubPolicy(payload)
+	subPolicy, err := DecodeSubPolicy(payload)
 	if err != nil {
 		return err
 	}
@@ -118,6 +119,6 @@ func (c *Catalog) removeSubPolicy(queueName string, payload []byte) error {
 	if !ok {
 		return fmt.Errorf("queue %s not found", queueName)
 	}
-	delete(queue.subPolicies, subPolicy.SubName)
+	delete(queue.SubPolicies, subPolicy.SubName)
 	return nil
 }

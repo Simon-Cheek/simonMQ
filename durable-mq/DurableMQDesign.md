@@ -14,7 +14,7 @@ Optypes:
 ### Tradeoffs and Scope
 Work Todo: Eventual Features
 - WAL handles corrupted records in real time
-- Dedup logic producer-side (make messages retried externally idempotent)
+- Dedup logic producer-side (make Messages retried externally idempotent)
 - Preserve retry attempt #s for unACKed subscribers on crash + restart
   - Currently only preserves which subscribers have ACKed
 
@@ -26,7 +26,7 @@ Work Todo: Eventual Features
   - Handles management of log files + compaction
 - Delivery
   - Handles rebuilding application state from WAL
-    - Mainly messages in flight + ACK status
+    - Mainly Messages in flight + ACK status
 - Catalog
   - Handles queue registry and subscriber policy state
 - Coordinator

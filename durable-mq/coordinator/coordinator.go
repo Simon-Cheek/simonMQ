@@ -35,8 +35,10 @@ func NewCoordinator() (*Coordinator, error) {
 	}, nil
 }
 
-func (c *Coordinator) ReplayLog() (map[string]catalog.QueueInfo,
+func (c *Coordinator) ReplayLog() ([]string,
 	map[string]*delivery.DeliveryQueueInfo, error) {
+
+	// Don't allow any modifications while WAL is being replayed
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -66,8 +68,13 @@ func (c *Coordinator) ReplayLog() (map[string]catalog.QueueInfo,
 			}
 		}
 
+		// Delivery needs to be informed if a queue is removed
+		if opType == record.OpDeleteQueue {
+			c.deli.DeleteQueueMessages(rec.QueueName)
+		}
+
 	}
-	catalogSnapshot := c.cat.ReturnQueueResults()
+	catalogSnapshot := c.cat.ReturnQueueNames()
 	deliveryResults := c.deli.YieldDeliveryData()
 	c.deli = nil
 	return catalogSnapshot, deliveryResults, nil
@@ -80,4 +87,82 @@ func (c *Coordinator) handleEnqueue(rec record.Record) error {
 		return fmt.Errorf("queue %s not found", queueName)
 	}
 	return c.deli.ProcessEnqueue(rec, subList)
+}
+
+func (c *Coordinator) CreateQueue(queueName string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	rec := &record.Record{
+		OpType:    record.OpCreateQueue,
+		QueueName: queueName,
+	}
+	if _, err := c.log.Append(rec); err != nil {
+		return err
+	}
+	return c.cat.ProcessRecord(*rec)
+}
+
+func (c *Coordinator) DeleteQueue(queueName string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.cat.QueueExists(queueName) {
+		return fmt.Errorf("queue %s not found", queueName)
+	}
+
+	rec := &record.Record{
+		OpType:    record.OpDeleteQueue,
+		QueueName: queueName,
+	}
+	if _, err := c.log.Append(rec); err != nil {
+		return err
+	}
+	return c.cat.ProcessRecord(*rec)
+}
+
+func (c *Coordinator) UpdateSubPolicy(queueName string, policy catalog.SubPolicy) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.cat.QueueExists(queueName) {
+		return fmt.Errorf("queue %s not found", queueName)
+	}
+
+	payload, err := catalog.EncodeSubPolicy(policy)
+	if err != nil {
+		return err
+	}
+	rec := &record.Record{
+		OpType:    record.OpUpdateSubPolicy,
+		QueueName: queueName,
+		Payload:   payload,
+	}
+	if _, err := c.log.Append(rec); err != nil {
+		return err
+	}
+	return c.cat.ProcessRecord(*rec)
+}
+
+func (c *Coordinator) DeleteSubPolicy(queueName string, subName string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.cat.QueueExists(queueName) {
+		return fmt.Errorf("queue %s not found", queueName)
+	}
+
+	payload, err := catalog.EncodeSubPolicy(catalog.SubPolicy{SubName: subName})
+	if err != nil {
+		return err
+	}
+	rec := &record.Record{
+		OpType:    record.OpDeleteSubPolicy,
+		QueueName: queueName,
+		Payload:   payload,
+	}
+	if _, err := c.log.Append(rec); err != nil {
+		return err
+	}
+	return c.cat.ProcessRecord(*rec)
 }

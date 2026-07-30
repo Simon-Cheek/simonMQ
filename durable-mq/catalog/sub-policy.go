@@ -8,11 +8,11 @@ type SubPolicy struct {
 	NumberOfRetries int    `json:"NumberOfRetries"`
 }
 
-func encodeSubPolicy(p SubPolicy) ([]byte, error) {
+func EncodeSubPolicy(p SubPolicy) ([]byte, error) {
 	return json.Marshal(p)
 }
 
-func decodeSubPolicy(b []byte) (SubPolicy, error) {
+func DecodeSubPolicy(b []byte) (SubPolicy, error) {
 	var p SubPolicy
 	if err := json.Unmarshal(b, &p); err != nil {
 		return SubPolicy{}, err

@@ -7,11 +7,11 @@ type Ack struct {
 	SubName string `json:"SubName"`
 }
 
-func encodeAck(p Ack) ([]byte, error) {
+func EncodeAck(p Ack) ([]byte, error) {
 	return json.Marshal(p)
 }
 
-func decodeAck(b []byte) (Ack, error) {
+func DecodeAck(b []byte) (Ack, error) {
 	var p Ack
 	if err := json.Unmarshal(b, &p); err != nil {
 		return Ack{}, err
