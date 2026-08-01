@@ -12,7 +12,24 @@ Optypes:
 - DELETE_QUEUE (4)
 - UPDATE_SUB_POLICY (5)
 - DELETE_SUB_POLICY (6)
+- BEGIN_CHECKPOINT (7)
+- END_CHECKPOINT (8)
 
-## Tradeoffs
+## Checkpoint Design
 
-## Flow of Control
+### Flow of Control
+- `BEGIN_CHECKPOINT` is logged to the WAL
+- Everything prior to this log is aggregated in memory
+  - Enqueues are deleted if fully acked (subscriber state on enqueue is stored with the enqueue log)
+  - All acks for messages that are fully acked are also removed
+  - Current queue / subscriber state as of the start of the checkpoint process is compressed into creation logs
+- Checkpoint log is written out to disk
+- `END_CHECKPOINT` is logged to the WAL pointing to the LSN of the earlier `BEGIN_CHECKPOINT` (and to the checkpoint file itself)
+- Old Checkpoint files and WAL files prior to the corresponding `BEGIN_CHECKPOINT` log are removed (once checksums are verified)
+
+### Replay WAL Algorithm
+- Most recent checkpoint file is read after verifying its presence in the log (END_CHECKPOINT) and checksums validated
+- If not valid, all checkpoint files are removed and the log replayed as normal
+- If valid, the log is discarded up until the final `BEGIN_CHECKPOINT` associated with the final valid `END_CHECKPOINT`
+  - Everything past this point is appended to the checkpoint log
+- Files found with a final LSN previous to the end of the checkpoint log are deleted
