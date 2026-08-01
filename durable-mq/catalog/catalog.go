@@ -42,9 +42,12 @@ func (c *Catalog) ProcessRecord(rec record.Record) error {
 		return c.updateSubPolicy(rec.QueueName, rec.Payload)
 	case record.OpDeleteSubPolicy:
 		return c.removeSubPolicy(rec.QueueName, rec.Payload)
+	case record.OpBeginCheckpoint:
+		return nil
+	case record.OpEndCheckpoint:
+		return nil
 	default:
 		return fmt.Errorf("invalid optype passed to ProcessRecord: %v", optype)
-
 	}
 }
 

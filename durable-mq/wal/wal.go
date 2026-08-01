@@ -8,7 +8,6 @@ type WAL struct {
 	r  *Reader
 }
 
-// TODO: Checkpointing
 func Open(dir string, maxSegSize int64) (*WAL, error) {
 	sm, err := NewSegmentManager(dir)
 	if err != nil {
@@ -32,7 +31,17 @@ func (l *WAL) Append(rec *record.Record) (uint64, error) {
 }
 
 func (l *WAL) ReadAll() ([]*record.Record, error) {
-	return l.r.ReadAll()
+	records, validCkptName, validCkptLSN, err := l.r.ReadAll()
+	if err != nil {
+		return records, err
+	}
+
+	// If multiple ckpt files encountered, delete all except the current one
+	l.sm.DeleteCheckpointFilesExcept(validCkptName)
+
+	// Delete unnecessary wal files (covered by ckpt)
+	l.sm.DeleteSegmentsBefore(validCkptLSN)
+	return records, nil
 }
 
 func (l *WAL) Close() error {

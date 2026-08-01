@@ -39,9 +39,9 @@ Optypes:
 ### Todo Checklist for Implementing Checkpointing
 - [x] Change Enqueues to embed SubPolicy at time of enqueue (alter app logic to use this as well)
   - Retry-attempt tracking (how many attempts each SubPolicy has remaining) is deferred to a separate task — it needs a new record type and isn't required for checkpointing itself, which only needs acked/not-acked status.
-- [ ] Change reading from the WAL to ignore anything prior to the last valid `Begin_Checkpoint` log
+- [x] Change reading from the WAL to ignore anything prior to the last valid `Begin_Checkpoint` log
   - Valid means there is an associated `End_Checkpoint` and the checksum + checkpoint file is intact
-- [ ] Implement rest of "Replay WAL Algorithm" defined above
+- [x] Implement rest of "Replay WAL Algorithm" defined above
 - [ ] Start implementing actual checkpointing logic
   - Define and implement trigger to begin checkpointing
   - Start checkpointing method that receives full log into memory

@@ -3,7 +3,9 @@ package wal
 import (
 	"durable-mq/record"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -107,6 +109,44 @@ func (sm *SegmentManager) TruncateSegment(name string, size int64) error {
 	return os.Truncate(filepath.Join(sm.dir, name), size)
 }
 
+func (sm *SegmentManager) DeleteSegmentsBefore(lsn uint64) error {
+	segs := sm.Segments()
+
+	var toDelete []string
+	for i := 0; i < len(segs)-1; i++ {
+		if firstLSNFromSegmentName(segs[i+1]) > lsn {
+			break
+		}
+		toDelete = append(toDelete, segs[i])
+	}
+	if len(toDelete) == 0 {
+		return nil
+	}
+
+	var errs []error
+	for _, name := range toDelete {
+		if err := os.Remove(filepath.Join(sm.dir, name)); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, err)
+		}
+	}
+
+	deleted := make(map[string]struct{}, len(toDelete))
+	for _, name := range toDelete {
+		deleted[name] = struct{}{}
+	}
+	sm.mu.Lock()
+	kept := make([]string, 0, len(sm.segments))
+	for _, name := range sm.segments {
+		if _, ok := deleted[name]; !ok {
+			kept = append(kept, name)
+		}
+	}
+	sm.segments = kept
+	sm.mu.Unlock()
+
+	return errors.Join(errs...)
+}
+
 func (sm *SegmentManager) OpenSegmentForAppend(name string) (*os.File, error) {
 	return os.OpenFile(filepath.Join(sm.dir, name), os.O_APPEND|os.O_WRONLY, 0644)
 }
@@ -207,4 +247,66 @@ func (sm *SegmentManager) OpenSegment(name string) (*os.File, error) {
 
 func segmentFileName(firstLSN uint64) string {
 	return fmt.Sprintf("%020d.wal", firstLSN)
+}
+
+type CheckpointFile struct {
+	Name     string
+	Checksum string
+}
+
+// CheckpointFiles scans the WAL directory directly
+func (sm *SegmentManager) CheckpointFiles() ([]CheckpointFile, error) {
+	entries, err := os.ReadDir(sm.dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".ckpt") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+
+	files := make([]CheckpointFile, 0, len(names))
+	for _, name := range names {
+		checksum, err := checksumFile(filepath.Join(sm.dir, name))
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, CheckpointFile{Name: name, Checksum: checksum})
+	}
+	return files, nil
+}
+
+func (sm *SegmentManager) DeleteCheckpointFilesExcept(keepName string) error {
+	files, err := sm.CheckpointFiles()
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, f := range files {
+		if f.Name == keepName {
+			continue
+		}
+		if err := os.Remove(filepath.Join(sm.dir, f.Name)); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func checksumFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := crc32.NewIEEE()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%08x", h.Sum32()), nil
 }
