@@ -44,7 +44,7 @@ func NewDeliveryMessageInfo() *DeliveryMessageInfo {
 
 // ProcessEnqueue adds the msg AFTER queue has already been verified by coordinator
 // Assumes that msgId collision will not occur (overwrites if so)
-func (d *Delivery) ProcessEnqueue(rec record.Record, subList []catalog.SubPolicy) error {
+func (d *Delivery) ProcessEnqueue(rec record.Record) error {
 	optype := rec.OpType
 	if !(optype == record.OpEnqueue) {
 		return fmt.Errorf("invalid op type: %v", optype)
@@ -63,9 +63,7 @@ func (d *Delivery) ProcessEnqueue(rec record.Record, subList []catalog.SubPolicy
 
 	msgInfo := NewDeliveryMessageInfo()
 	msgInfo.Content = content
-	for _, sub := range subList {
-		msgInfo.SubList[sub.SubName] = sub
-	}
+	msgInfo.SubList = enq.SubList
 	d.Queues[queueName].Messages[msgId] = msgInfo
 
 	return nil

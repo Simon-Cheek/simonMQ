@@ -34,3 +34,18 @@ Optypes:
 - If valid, the log is discarded up until the final `BEGIN_CHECKPOINT` associated with the final valid `END_CHECKPOINT`
   - Everything past this point is appended to the checkpoint log
 - Files found with a final LSN previous to the end of the checkpoint log are deleted
+
+
+### Todo Checklist for Implementing Checkpointing
+- [x] Change Enqueues to embed SubPolicy at time of enqueue (alter app logic to use this as well)
+  - Retry-attempt tracking (how many attempts each SubPolicy has remaining) is deferred to a separate task — it needs a new record type and isn't required for checkpointing itself, which only needs acked/not-acked status.
+- [ ] Change reading from the WAL to ignore anything prior to the last valid `Begin_Checkpoint` log
+  - Valid means there is an associated `End_Checkpoint` and the checksum + checkpoint file is intact
+- [ ] Implement rest of "Replay WAL Algorithm" defined above
+- [ ] Start implementing actual checkpointing logic
+  - Define and implement trigger to begin checkpointing
+  - Start checkpointing method that receives full log into memory
+  - Dedups / Compacts as needed and as defined above into MEMORY
+  - Once final compaction is set, streams to disk (define file naming convention)
+    - `checkpoint-<beginCheckpointLSN>.ckpt`
+  - Obtains checksum, writes END_CHECKPOINT to WAL

@@ -1,11 +1,15 @@
 package delivery
 
 // Enqueue contains msgId and msgContents
-import "encoding/json"
+import (
+	"durable-mq/catalog"
+	"encoding/json"
+)
 
 type Enqueue struct {
-	MsgId      string `json:"MsgId"`
-	MsgContent string `json:"MsgContent"`
+	MsgId      string                       `json:"MsgId"`
+	MsgContent string                       `json:"MsgContent"`
+	SubList    map[string]catalog.SubPolicy `json:"SubList"`
 }
 
 func EncodeEnqueue(p Enqueue) ([]byte, error) {

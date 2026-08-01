@@ -81,12 +81,7 @@ func (c *Coordinator) ReplayLog() ([]string,
 }
 
 func (c *Coordinator) handleEnqueue(rec record.Record) error {
-	queueName := rec.QueueName
-	subList, ok := c.cat.FetchQueueSubList(queueName) // Capture sublist at time of enqueue
-	if !ok {
-		return fmt.Errorf("queue %s not found", queueName)
-	}
-	return c.deli.ProcessEnqueue(rec, subList)
+	return c.deli.ProcessEnqueue(rec)
 }
 
 // The following methods are exposed to the Broker to call to write down to the WAL
@@ -170,7 +165,7 @@ func (c *Coordinator) DeleteSubPolicy(queueName string, subName string) error {
 	return c.cat.ProcessRecord(*rec)
 }
 
-func (c *Coordinator) Enqueue(queueName string, msgId string, content string) ([]catalog.SubPolicy, error) {
+func (c *Coordinator) Enqueue(queueName string, msgId string, content string) (map[string]catalog.SubPolicy, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -178,7 +173,13 @@ func (c *Coordinator) Enqueue(queueName string, msgId string, content string) ([
 		return nil, fmt.Errorf("queue %s not found", queueName)
 	}
 
-	payload, err := delivery.EncodeEnqueue(delivery.Enqueue{MsgId: msgId, MsgContent: content})
+	subList, ok := c.cat.FetchQueueSubList(queueName)
+	if !ok {
+		// Queue existed moments ago under the same lock — this shouldn't happen
+		return nil, fmt.Errorf("queue %s disappeared during enqueue", queueName)
+	}
+
+	payload, err := delivery.EncodeEnqueue(delivery.Enqueue{MsgId: msgId, MsgContent: content, SubList: subList})
 	if err != nil {
 		return nil, err
 	}
@@ -189,12 +190,6 @@ func (c *Coordinator) Enqueue(queueName string, msgId string, content string) ([
 	}
 	if _, err := c.log.Append(rec); err != nil {
 		return nil, err
-	}
-
-	subList, ok := c.cat.FetchQueueSubList(queueName)
-	if !ok {
-		// Queue existed moments ago under the same lock — this shouldn't happen
-		return nil, fmt.Errorf("queue %s disappeared during enqueue", queueName)
 	}
 	return subList, nil
 }

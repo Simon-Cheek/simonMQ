@@ -15,6 +15,8 @@ const (
 	OpDeleteQueue
 	OpUpdateSubPolicy
 	OpDeleteSubPolicy
+	OpBeginCheckpoint
+	OpEndCheckpoint
 )
 
 type Record struct {

@@ -127,12 +127,7 @@ func (b *Broker) Enqueue(queueName string, payload string) error {
 		return err
 	}
 
-	subSnapshot := make(map[string]catalog.SubPolicy, len(subPolicies))
-	for _, sp := range subPolicies {
-		subSnapshot[sp.SubName] = sp
-	}
-
-	msg := NewQueueMsg(msgId, payload, subSnapshot, nil)
+	msg := NewQueueMsg(msgId, payload, subPolicies, nil)
 	q.Add(msg)
 	return nil
 }

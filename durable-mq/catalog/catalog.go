@@ -79,16 +79,16 @@ func (c *Catalog) removeQueue(queueName string) {
 	delete(c.queues, queueName)
 }
 
-func (c *Catalog) FetchQueueSubList(queueName string) ([]SubPolicy, bool) {
+func (c *Catalog) FetchQueueSubList(queueName string) (map[string]SubPolicy, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	q, ok := c.queues[queueName]
 	if !ok {
 		return nil, false
 	}
-	policies := make([]SubPolicy, 0, len(q.SubPolicies))
-	for _, policy := range q.SubPolicies {
-		policies = append(policies, policy)
+	policies := make(map[string]SubPolicy, len(q.SubPolicies))
+	for name, policy := range q.SubPolicies {
+		policies[name] = policy
 	}
 	return policies, true
 }
