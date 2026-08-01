@@ -14,9 +14,10 @@ import (
 )
 
 type SegmentManager struct {
-	mu       sync.Mutex // protects "segments" field
-	dir      string
-	segments []string // sorted filenames
+	mu           sync.Mutex // protects "segments" field
+	dir          string
+	segments     []string // sorted filenames
+	ckptSegments []string
 }
 
 type RecoveryState struct {
@@ -42,14 +43,20 @@ func (sm *SegmentManager) refresh() error {
 		return err
 	}
 	var segs []string
+	var ckpts []string
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".wal") {
 			segs = append(segs, e.Name())
 		}
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".ckpt") {
+			ckpts = append(ckpts, e.Name())
+		}
 	}
 	sort.Strings(segs)
+	sort.Strings(ckpts)
 	sm.mu.Lock()
 	sm.segments = segs
+	sm.ckptSegments = ckpts
 	sm.mu.Unlock()
 	return nil
 }
