@@ -24,7 +24,8 @@ Optypes:
   - All acks for messages that are fully acked are also removed
   - Current queue / subscriber state as of the start of the checkpoint process is compressed into creation logs
 - Checkpoint log is written out to disk
-- `END_CHECKPOINT` is logged to the WAL pointing to the LSN of the earlier `BEGIN_CHECKPOINT` (and to the checkpoint file itself)
+- `END_CHECKPOINT` is logged to the WAL pointing to the LSN of the earlier `BEGIN_CHECKPOINT`
+  - Contains the name of the checkpoint file as well as the checksum
 - Old Checkpoint files and WAL files prior to the corresponding `BEGIN_CHECKPOINT` log are removed (once checksums are verified)
 
 ### Replay WAL Algorithm
