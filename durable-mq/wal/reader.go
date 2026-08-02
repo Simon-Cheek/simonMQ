@@ -49,19 +49,42 @@ func (r *Reader) isLastSegment() bool {
 	return !ok
 }
 
-// ReadAll returns every record surviving replay, plus the name and
-// beginCheckpointLSN of the checkpoint file (if any) that replay ultimately
-// settled on as valid — callers use these to sweep stale/orphaned
-// checkpoint files and now-fully-superseded WAL segments from disk once
-// replay has determined the truth, rather than deleting anything here.
 func (r *Reader) ReadAll() ([]*record.Record, string, uint64, error) {
 	var records []*record.Record
 	lastBeginCkptLSN := uint64(0)
 	validCkptName := ""
 	validCkptLSN := uint64(0)
 
+	for {
+		rec, err := r.readNext()
+		if err != nil {
+			return records, validCkptName, validCkptLSN, err
+		}
+		if rec == nil {
+			return records, validCkptName, validCkptLSN, nil
+		}
+
+		switch rec.OpType {
+		case record.OpBeginCheckpoint:
+			lastBeginCkptLSN = rec.LSN
+		case record.OpEndCheckpoint:
+			if endCkpt, err := DecodeEndCheckpoint(rec.Payload); err == nil {
+				if ckptRecs, ok := r.resolveCheckpoint(endCkpt); ok {
+					records = append(ckptRecs, records[splitAt(records, lastBeginCkptLSN):]...)
+					validCkptName = endCkpt.FileName
+					validCkptLSN = lastBeginCkptLSN
+				}
+			}
+		}
+
+		records = append(records, rec)
+	}
+}
+
+// readNext decodes the next record, opening the following segment on EOF.
+func (r *Reader) readNext() (*record.Record, error) {
 	if r.file == nil {
-		return records, validCkptName, validCkptLSN, nil
+		return nil, nil
 	}
 
 	for {
@@ -70,89 +93,72 @@ func (r *Reader) ReadAll() ([]*record.Record, string, uint64, error) {
 		if err == io.EOF {
 			next, ok := r.sm.SegmentAfter(r.current)
 			if !ok {
-				return records, validCkptName, validCkptLSN, nil
+				return nil, nil
 			}
 			if err := r.openSegment(next); err != nil {
-				return nil, validCkptName, validCkptLSN, err
+				return nil, err
 			}
 			continue
 		}
 		if err == io.ErrUnexpectedEOF {
 			if r.isLastSegment() {
-				return records, validCkptName, validCkptLSN, nil
+				return nil, nil
 			}
-			return records, validCkptName, validCkptLSN, fmt.Errorf("unexpected partial record in non-final segment %s", r.current)
+			return nil, fmt.Errorf("unexpected partial record in non-final segment %s", r.current)
 		}
 		if err != nil {
-			return records, validCkptName, validCkptLSN, err
+			return nil, err
 		}
 
 		remainingLength := binary.LittleEndian.Uint32(header[8:12])
 		if remainingLength > maxLogLength {
-			return records, validCkptName, validCkptLSN, fmt.Errorf("wal log over max header length: %d", remainingLength)
+			return nil, fmt.Errorf("wal log over max header length: %d", remainingLength)
 		}
 
 		remaining := make([]byte, remainingLength)
 		_, err = io.ReadFull(r.file, remaining)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			if r.isLastSegment() {
-				return records, validCkptName, validCkptLSN, nil
+				return nil, nil
 			}
-			return records, validCkptName, validCkptLSN, fmt.Errorf("unexpected partial record in non-final segment %s", r.current)
+			return nil, fmt.Errorf("unexpected partial record in non-final segment %s", r.current)
 		}
 		if err != nil {
-			return records, validCkptName, validCkptLSN, err
+			return nil, err
 		}
 
-		recordBytes := append(header, remaining...)
-		rec, err := record.Decode(recordBytes)
-
+		rec, err := record.Decode(append(header, remaining...))
 		if err != nil {
-			break // CRC mismatch
+			return nil, nil // CRC mismatch — stop, don't trust anything past this
 		}
 		if rec == nil {
 			continue
 		}
-
-		// Checkpointing logic
-		opType := rec.OpType
-		if opType == record.OpBeginCheckpoint {
-			lastBeginCkptLSN = rec.LSN
-		}
-		if opType == record.OpEndCheckpoint {
-			payload := rec.Payload
-			endCkpt, err := DecodeEndCheckpoint(payload)
-			if err != nil {
-				continue
-			}
-			checksum, err := checksumFile(filepath.Join(r.sm.dir, endCkpt.FileName))
-			if err != nil {
-				continue // missing/unreadable
-			}
-			if checksum != endCkpt.FileChecksum {
-				continue // corrupt, delete checksum file
-			}
-			// Checksum matches - discard everything before the matching
-			// Prepend corresponding ckpt file
-			ckptRecs, err := r.ReadAllCkpt(endCkpt.FileName)
-			if err != nil {
-				continue
-			}
-			keepFrom := len(records)
-			for i, existing := range records {
-				if existing.LSN > lastBeginCkptLSN {
-					keepFrom = i
-					break
-				}
-			}
-			records = append(ckptRecs, records[keepFrom:]...)
-			validCkptName = endCkpt.FileName
-			validCkptLSN = lastBeginCkptLSN
-		}
-
-		records = append(records, rec)
+		return rec, nil
 	}
-	return records, validCkptName, validCkptLSN, nil
+}
+
+// resolveCheckpoint verifies endCkpt's checksum against the file on disk
+// and, if it matches, returns that file's records
+func (r *Reader) resolveCheckpoint(endCkpt EndCheckpoint) (recs []*record.Record, ok bool) {
+	checksum, err := checksumFile(filepath.Join(r.sm.dir, endCkpt.FileName))
+	if err != nil || checksum != endCkpt.FileChecksum {
+		return nil, false
+	}
+	recs, err = r.ReadAllCkpt(endCkpt.FileName)
+	if err != nil {
+		return nil, false
+	}
+	return recs, true
+}
+
+func splitAt(records []*record.Record, lsn uint64) int {
+	for i, rec := range records {
+		if rec.LSN > lsn {
+			return i
+		}
+	}
+	return len(records)
 }
 
 func (r *Reader) ReadAllCkpt(ckptFileName string) ([]*record.Record, error) {
