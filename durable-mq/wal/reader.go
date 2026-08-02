@@ -140,9 +140,15 @@ func (r *Reader) readNext() (*record.Record, error) {
 
 // resolveCheckpoint verifies endCkpt's checksum against the file on disk
 // and, if it matches, returns that file's records
+// If invalid checksum, deletes the file
 func (r *Reader) resolveCheckpoint(endCkpt EndCheckpoint) (recs []*record.Record, ok bool) {
-	checksum, err := checksumFile(filepath.Join(r.sm.dir, endCkpt.FileName))
-	if err != nil || checksum != endCkpt.FileChecksum {
+	path := filepath.Join(r.sm.dir, endCkpt.FileName)
+	checksum, err := checksumFile(path)
+	if err != nil {
+		return nil, false
+	}
+	if checksum != endCkpt.FileChecksum {
+		os.Remove(path) // corrupt
 		return nil, false
 	}
 	recs, err = r.ReadAllCkpt(endCkpt.FileName)
