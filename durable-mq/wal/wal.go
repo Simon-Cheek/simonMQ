@@ -46,6 +46,18 @@ func (l *WAL) ReadUpTo(uptoLSN uint64) ([]*record.Record, error) {
 	return r.ReadUpTo(uptoLSN)
 }
 
+func (l *WAL) WriteCheckpointFile(id string, records []*record.Record) (string, string, error) {
+	return l.sm.WriteCheckpointFile(id, records)
+}
+
+func (l *WAL) DeleteSegmentsBefore(lsn uint64) error {
+	return l.sm.DeleteSegmentsBefore(lsn)
+}
+
+func (l *WAL) DeleteCheckpointFilesExcept(keepName string) error {
+	return l.sm.DeleteCheckpointFilesExcept(keepName)
+}
+
 func (l *WAL) ReadAll() ([]*record.Record, error) {
 	records, validCkptName, validCkptLSN, err := l.r.ReadAll()
 	if err != nil {
@@ -57,6 +69,8 @@ func (l *WAL) ReadAll() ([]*record.Record, error) {
 
 	// Delete unnecessary wal files (covered by ckpt)
 	l.sm.DeleteSegmentsBefore(validCkptLSN)
+
+	l.sm.DeleteTmpFiles()
 	return records, nil
 }
 

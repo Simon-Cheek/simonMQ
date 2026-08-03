@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"bufio"
 	"durable-mq/record"
 	"encoding/binary"
 	"errors"
@@ -260,8 +261,8 @@ type CheckpointFile struct {
 	Checksum string
 }
 
-// CheckpointFiles scans the WAL directory directly
-func (sm *SegmentManager) CheckpointFiles() ([]CheckpointFile, error) {
+// GetCheckpointFiles scans the WAL directory directly
+func (sm *SegmentManager) GetCheckpointFiles() ([]CheckpointFile, error) {
 	entries, err := os.ReadDir(sm.dir)
 	if err != nil {
 		return nil, err
@@ -287,7 +288,7 @@ func (sm *SegmentManager) CheckpointFiles() ([]CheckpointFile, error) {
 }
 
 func (sm *SegmentManager) DeleteCheckpointFilesExcept(keepName string) error {
-	files, err := sm.CheckpointFiles()
+	files, err := sm.GetCheckpointFiles()
 	if err != nil {
 		return err
 	}
@@ -301,6 +302,81 @@ func (sm *SegmentManager) DeleteCheckpointFilesExcept(keepName string) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (sm *SegmentManager) DeleteTmpFiles() error {
+	entries, err := os.ReadDir(sm.dir)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tmp") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(sm.dir, e.Name())); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func checkpointFileName(id string) string {
+	return fmt.Sprintf("checkpoint-%s.ckpt", id)
+}
+
+// WriteCheckpointFile Writes to .tmp file and renames after successful write to .ckpt
+func (sm *SegmentManager) WriteCheckpointFile(id string, records []*record.Record) (string, string, error) {
+	name := checkpointFileName(id)
+	finalPath := filepath.Join(sm.dir, name)
+	tmpPath := finalPath + ".tmp"
+
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return "", "", err
+	}
+
+	w := bufio.NewWriter(f)
+	for _, rec := range records {
+		buf, err := record.Encode(rec)
+		if err != nil {
+			f.Close()
+			os.Remove(tmpPath)
+			return "", "", err
+		}
+		if _, err := w.Write(buf); err != nil {
+			f.Close()
+			os.Remove(tmpPath)
+			return "", "", err
+		}
+	}
+
+	if err := w.Flush(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return "", "", err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return "", "", err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return "", "", err
+	}
+
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		os.Remove(tmpPath)
+		return "", "", err
+	}
+
+	checksum, err := checksumFile(finalPath)
+	if err != nil {
+		return "", "", err
+	}
+
+	return name, checksum, nil
 }
 
 func checksumFile(path string) (string, error) {
