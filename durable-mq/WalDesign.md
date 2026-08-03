@@ -30,7 +30,7 @@ Optypes:
 
 ### Replay WAL Algorithm
 - Most recent checkpoint file is read after verifying its presence in the log (END_CHECKPOINT) and checksums validated
-- If not valid, all checkpoint files are removed and the log replayed as normal
+- If not valid, the checkpoint file is removed and the log replayed as normal
 - If valid, the log is discarded up until the final `BEGIN_CHECKPOINT` associated with the final valid `END_CHECKPOINT`
   - Everything past this point is appended to the checkpoint log
 - Files found with a final LSN previous to the end of the checkpoint log are deleted

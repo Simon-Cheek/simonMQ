@@ -7,6 +7,7 @@ import (
 	"durable-mq/wal"
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // Coordinator manages the initial replay of the WAL
@@ -17,6 +18,8 @@ type Coordinator struct {
 	cat  *catalog.Catalog
 	deli *delivery.Delivery
 	mu   sync.Mutex // Prevent Append operations from happening while replay occurs
+
+	checkpointing atomic.Bool // true for the entire lifecycle of an in-flight checkpoint, cleanup included
 }
 
 // WAL Config
@@ -84,6 +87,54 @@ func (c *Coordinator) handleEnqueue(rec record.Record) error {
 	return c.deli.ProcessEnqueue(rec)
 }
 
+// append wraps log appends with shared logic, such as checkpointing
+func (c *Coordinator) append(rec *record.Record) (uint64, error) {
+	lsn, err := c.log.Append(rec)
+	if err != nil {
+		return 0, err
+	}
+	c.maybeCheckpoint()
+	return lsn, nil
+}
+
+func (c *Coordinator) maybeCheckpoint() {
+	if !c.log.ShouldCheckpoint() {
+		return
+	}
+	if !c.checkpointing.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer c.checkpointing.Store(false)
+		c.runCheckpoint()
+	}()
+}
+
+func (c *Coordinator) runCheckpoint() {
+	// Append BEGIN_CHECKPOINT
+	rec := record.Record{
+		OpType: record.OpBeginCheckpoint,
+	}
+	lsn, err := c.log.Append(&rec)
+	if err != nil {
+		panic(err)
+	}
+
+	// Fetch all logs up until BEGIN_CHECKPOINT
+	fetchedRecs, err := c.log.ReadUpTo(lsn)
+	if err != nil {
+		panic(err)
+	}
+
+	// Compile new list of records using dedup logic
+
+	// Write checkpoint file to disk
+
+	// Write END_CHECKPOINT log
+
+	// Delete old, unnecessary files
+}
+
 // The following methods are exposed to the Broker to call to write down to the WAL
 // And to store Queue/Sub Data in Catalog
 
@@ -95,7 +146,7 @@ func (c *Coordinator) CreateQueue(queueName string) error {
 		OpType:    record.OpCreateQueue,
 		QueueName: queueName,
 	}
-	if _, err := c.log.Append(rec); err != nil {
+	if _, err := c.append(rec); err != nil {
 		return err
 	}
 	return c.cat.ProcessRecord(*rec)
@@ -113,7 +164,7 @@ func (c *Coordinator) DeleteQueue(queueName string) error {
 		OpType:    record.OpDeleteQueue,
 		QueueName: queueName,
 	}
-	if _, err := c.log.Append(rec); err != nil {
+	if _, err := c.append(rec); err != nil {
 		return err
 	}
 	return c.cat.ProcessRecord(*rec)
@@ -136,7 +187,7 @@ func (c *Coordinator) UpdateSubPolicy(queueName string, policy catalog.SubPolicy
 		QueueName: queueName,
 		Payload:   payload,
 	}
-	if _, err := c.log.Append(rec); err != nil {
+	if _, err := c.append(rec); err != nil {
 		return err
 	}
 	return c.cat.ProcessRecord(*rec)
@@ -159,7 +210,7 @@ func (c *Coordinator) DeleteSubPolicy(queueName string, subName string) error {
 		QueueName: queueName,
 		Payload:   payload,
 	}
-	if _, err := c.log.Append(rec); err != nil {
+	if _, err := c.append(rec); err != nil {
 		return err
 	}
 	return c.cat.ProcessRecord(*rec)
@@ -188,7 +239,7 @@ func (c *Coordinator) Enqueue(queueName string, msgId string, content string) (m
 		QueueName: queueName,
 		Payload:   payload,
 	}
-	if _, err := c.log.Append(rec); err != nil {
+	if _, err := c.append(rec); err != nil {
 		return nil, err
 	}
 	return subList, nil
@@ -207,6 +258,6 @@ func (c *Coordinator) Ack(queueName string, msgId string, subName string) error 
 		QueueName: queueName,
 		Payload:   payload,
 	}
-	_, err = c.log.Append(rec)
+	_, err = c.append(rec)
 	return err
 }

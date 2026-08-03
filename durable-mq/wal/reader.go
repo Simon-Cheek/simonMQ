@@ -50,6 +50,19 @@ func (r *Reader) isLastSegment() bool {
 }
 
 func (r *Reader) ReadAll() ([]*record.Record, string, uint64, error) {
+	return r.readLoop(nil)
+}
+
+// ReadUpTo behaves like ReadAll but stops after a given LSN
+func (r *Reader) ReadUpTo(uptoLSN uint64) ([]*record.Record, error) {
+	records, _, _, err := r.readLoop(func(rec *record.Record) bool {
+		return rec.LSN >= uptoLSN
+	})
+	return records, err
+}
+
+// readLoop is the shared reset-on-valid-checkpoint scan behind ReadAll and ReadUpTo
+func (r *Reader) readLoop(stop func(rec *record.Record) bool) ([]*record.Record, string, uint64, error) {
 	var records []*record.Record
 	lastBeginCkptLSN := uint64(0)
 	validCkptName := ""
@@ -78,6 +91,10 @@ func (r *Reader) ReadAll() ([]*record.Record, string, uint64, error) {
 		}
 
 		records = append(records, rec)
+
+		if stop != nil && stop(rec) {
+			return records, validCkptName, validCkptLSN, nil
+		}
 	}
 }
 

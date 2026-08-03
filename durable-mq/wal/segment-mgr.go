@@ -28,6 +28,8 @@ type RecoveryState struct {
 	Size    int64
 }
 
+const checkpointSegmentThreshold = 4
+
 func NewSegmentManager(dir string) (*SegmentManager, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
@@ -70,6 +72,10 @@ func (sm *SegmentManager) Segments() []string {
 	segs := make([]string, len(sm.segments))
 	copy(segs, sm.segments)
 	return segs
+}
+
+func (sm *SegmentManager) ShouldCheckpoint() bool {
+	return len(sm.Segments()) >= checkpointSegmentThreshold
 }
 
 // SegmentAfter returns the segment immediately following `name`

@@ -30,6 +30,20 @@ func (l *WAL) Append(rec *record.Record) (uint64, error) {
 	return l.w.Append(rec)
 }
 
+func (l *WAL) ShouldCheckpoint() bool {
+	return l.sm.ShouldCheckpoint()
+}
+
+// ReadUpTo is used for checkpointing and needs its own Reader
+func (l *WAL) ReadUpTo(uptoLSN uint64) ([]*record.Record, error) {
+	r, err := OpenReader(l.sm)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return r.ReadUpTo(uptoLSN)
+}
+
 func (l *WAL) ReadAll() ([]*record.Record, error) {
 	records, validCkptName, validCkptLSN, err := l.r.ReadAll()
 	if err != nil {
