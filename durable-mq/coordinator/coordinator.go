@@ -3,6 +3,7 @@ package coordinator
 import (
 	"durable-mq/catalog"
 	"durable-mq/delivery"
+	"durable-mq/model"
 	"durable-mq/record"
 	"durable-mq/wal"
 	"fmt"
@@ -97,44 +98,6 @@ func (c *Coordinator) append(rec *record.Record) (uint64, error) {
 	return lsn, nil
 }
 
-func (c *Coordinator) maybeCheckpoint() {
-	if !c.log.ShouldCheckpoint() {
-		return
-	}
-	if !c.checkpointing.CompareAndSwap(false, true) {
-		return
-	}
-	go func() {
-		defer c.checkpointing.Store(false)
-		c.runCheckpoint()
-	}()
-}
-
-func (c *Coordinator) runCheckpoint() {
-	// Append BEGIN_CHECKPOINT
-	rec := record.Record{
-		OpType: record.OpBeginCheckpoint,
-	}
-	lsn, err := c.log.Append(&rec)
-	if err != nil {
-		panic(err)
-	}
-
-	// Fetch all logs up until BEGIN_CHECKPOINT
-	fetchedRecs, err := c.log.ReadUpTo(lsn)
-	if err != nil {
-		panic(err)
-	}
-
-	// Compile new list of records using dedup logic
-
-	// Write checkpoint file to disk
-
-	// Write END_CHECKPOINT log
-
-	// Delete old, unnecessary files
-}
-
 // The following methods are exposed to the Broker to call to write down to the WAL
 // And to store Queue/Sub Data in Catalog
 
@@ -170,7 +133,7 @@ func (c *Coordinator) DeleteQueue(queueName string) error {
 	return c.cat.ProcessRecord(*rec)
 }
 
-func (c *Coordinator) UpdateSubPolicy(queueName string, policy catalog.SubPolicy) error {
+func (c *Coordinator) UpdateSubPolicy(queueName string, policy model.SubPolicy) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -178,7 +141,7 @@ func (c *Coordinator) UpdateSubPolicy(queueName string, policy catalog.SubPolicy
 		return fmt.Errorf("queue %s not found", queueName)
 	}
 
-	payload, err := catalog.EncodeSubPolicy(policy)
+	payload, err := model.EncodeSubPolicy(policy)
 	if err != nil {
 		return err
 	}
@@ -201,7 +164,7 @@ func (c *Coordinator) DeleteSubPolicy(queueName string, subName string) error {
 		return fmt.Errorf("queue %s not found", queueName)
 	}
 
-	payload, err := catalog.EncodeSubPolicy(catalog.SubPolicy{SubName: subName})
+	payload, err := model.EncodeSubPolicy(model.SubPolicy{SubName: subName})
 	if err != nil {
 		return err
 	}
@@ -216,7 +179,7 @@ func (c *Coordinator) DeleteSubPolicy(queueName string, subName string) error {
 	return c.cat.ProcessRecord(*rec)
 }
 
-func (c *Coordinator) Enqueue(queueName string, msgId string, content string) (map[string]catalog.SubPolicy, error) {
+func (c *Coordinator) Enqueue(queueName string, msgId string, content string) (map[string]model.SubPolicy, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -230,7 +193,7 @@ func (c *Coordinator) Enqueue(queueName string, msgId string, content string) (m
 		return nil, fmt.Errorf("queue %s disappeared during enqueue", queueName)
 	}
 
-	payload, err := delivery.EncodeEnqueue(delivery.Enqueue{MsgId: msgId, MsgContent: content, SubList: subList})
+	payload, err := model.EncodeEnqueue(model.Enqueue{MsgId: msgId, MsgContent: content, SubList: subList})
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +212,7 @@ func (c *Coordinator) Ack(queueName string, msgId string, subName string) error 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	payload, err := delivery.EncodeAck(delivery.Ack{MsgId: msgId, SubName: subName})
+	payload, err := model.EncodeAck(model.Ack{MsgId: msgId, SubName: subName})
 	if err != nil {
 		return err
 	}

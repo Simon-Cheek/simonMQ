@@ -1,8 +1,8 @@
 package queue
 
 import (
-	"durable-mq/catalog"
 	"durable-mq/coordinator"
+	"durable-mq/model"
 	"fmt"
 	"sync"
 
@@ -133,7 +133,7 @@ func (b *Broker) Enqueue(queueName string, payload string) error {
 }
 
 func (b *Broker) EnqueueFromWAL(queueName string, msgId string, payload string,
-	subPolicies map[string]catalog.SubPolicy, ackedSubs map[string]struct{}) {
+	subPolicies map[string]model.SubPolicy, ackedSubs map[string]struct{}) {
 	b.mu.Lock()
 	q, ok := b.queues[queueName]
 	b.mu.Unlock()
@@ -144,11 +144,11 @@ func (b *Broker) EnqueueFromWAL(queueName string, msgId string, payload string,
 	q.Add(msg)
 }
 
-func (b *Broker) AddSubscriber(metadata catalog.SubPolicy, queueName string) error {
+func (b *Broker) AddSubscriber(metadata model.SubPolicy, queueName string) error {
 	return b.cord.UpdateSubPolicy(queueName, metadata)
 }
 
-func (b *Broker) UpdateSubscriber(metadata catalog.SubPolicy, queueName string) error {
+func (b *Broker) UpdateSubscriber(metadata model.SubPolicy, queueName string) error {
 	return b.cord.UpdateSubPolicy(queueName, metadata)
 }
 

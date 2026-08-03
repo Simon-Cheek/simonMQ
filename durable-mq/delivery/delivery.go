@@ -1,7 +1,7 @@
 package delivery
 
 import (
-	"durable-mq/catalog"
+	"durable-mq/model"
 	"durable-mq/record"
 	"fmt"
 )
@@ -19,7 +19,7 @@ type DeliveryQueueInfo struct {
 
 type DeliveryMessageInfo struct {
 	Content   string
-	SubList   map[string]catalog.SubPolicy
+	SubList   map[string]model.SubPolicy
 	AckedSubs map[string]struct{}
 }
 
@@ -37,7 +37,7 @@ func NewDeliveryQueueInfo() *DeliveryQueueInfo {
 
 func NewDeliveryMessageInfo() *DeliveryMessageInfo {
 	return &DeliveryMessageInfo{
-		SubList:   make(map[string]catalog.SubPolicy),
+		SubList:   make(map[string]model.SubPolicy),
 		AckedSubs: make(map[string]struct{}),
 	}
 }
@@ -50,7 +50,7 @@ func (d *Delivery) ProcessEnqueue(rec record.Record) error {
 		return fmt.Errorf("invalid op type: %v", optype)
 	}
 	payload := rec.Payload
-	enq, err := DecodeEnqueue(payload)
+	enq, err := model.DecodeEnqueue(payload)
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func (d *Delivery) ProcessAck(rec record.Record) error {
 		return fmt.Errorf("invalid op type: %v", optype)
 	}
 	payload := rec.Payload
-	ack, err := DecodeAck(payload)
+	ack, err := model.DecodeAck(payload)
 	if err != nil {
 		return err
 	}

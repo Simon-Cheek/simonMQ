@@ -3,7 +3,7 @@ package queue
 import (
 	"bytes"
 	"context"
-	"durable-mq/catalog"
+	"durable-mq/model"
 	"net/http"
 	"sync"
 	"time"
@@ -36,7 +36,7 @@ func (q *Queue) RunQueueWorker() {
 func (q *Queue) ProcessMsg(msg *QueueMsg) {
 	// Obtain list of non-acked Subs from the message's own snapshot —
 	// no catalog/queue lock needed, this is per-message immutable data
-	policyByName := make(map[string]catalog.SubPolicy, len(msg.SubPolicySnapshot))
+	policyByName := make(map[string]model.SubPolicy, len(msg.SubPolicySnapshot))
 	for name, policy := range msg.SubPolicySnapshot {
 		if _, ok := msg.AckedSubs[name]; ok {
 			continue
@@ -52,7 +52,7 @@ func (q *Queue) ProcessMsg(msg *QueueMsg) {
 	var wg sync.WaitGroup
 	for _, sub := range policyByName {
 		wg.Add(1)
-		go func(sub catalog.SubPolicy) {
+		go func(sub model.SubPolicy) {
 			defer wg.Done()
 			ok := q.sendMsg(&sub, msg)
 			results <- deliveryResult{subName: sub.SubName, success: ok}
@@ -93,7 +93,7 @@ func (q *Queue) ProcessMsg(msg *QueueMsg) {
 	}
 }
 
-func (q *Queue) sendMsg(sub *catalog.SubPolicy, msg *QueueMsg) bool {
+func (q *Queue) sendMsg(sub *model.SubPolicy, msg *QueueMsg) bool {
 
 	payload := msg.Payload
 	url := sub.SubURL

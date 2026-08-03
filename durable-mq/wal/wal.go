@@ -1,6 +1,8 @@
 package wal
 
-import "durable-mq/record"
+import (
+	"durable-mq/record"
+)
 
 type WAL struct {
 	sm *SegmentManager

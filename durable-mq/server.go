@@ -1,11 +1,11 @@
 package main
 
 import (
+	"durable-mq/model"
 	"encoding/json"
 	"io"
 	"net/http"
 
-	"durable-mq/catalog"
 	"durable-mq/queue"
 )
 
@@ -70,7 +70,7 @@ func (s *Server) HandleSubPolicyCreation(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var policy catalog.SubPolicy
+	var policy model.SubPolicy
 	if err := json.Unmarshal(body, &policy); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -96,7 +96,7 @@ func (s *Server) HandleSubPolicyUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var policy catalog.SubPolicy
+	var policy model.SubPolicy
 	if err := json.Unmarshal(body, &policy); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

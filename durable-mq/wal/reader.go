@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"durable-mq/model"
 	"durable-mq/record"
 	"encoding/binary"
 	"fmt"
@@ -81,7 +82,7 @@ func (r *Reader) readLoop(stop func(rec *record.Record) bool) ([]*record.Record,
 		case record.OpBeginCheckpoint:
 			lastBeginCkptLSN = rec.LSN
 		case record.OpEndCheckpoint:
-			if endCkpt, err := DecodeEndCheckpoint(rec.Payload); err == nil {
+			if endCkpt, err := model.DecodeEndCheckpoint(rec.Payload); err == nil {
 				if ckptRecs, ok := r.resolveCheckpoint(endCkpt); ok {
 					records = append(ckptRecs, records[splitAt(records, lastBeginCkptLSN):]...)
 					validCkptName = endCkpt.FileName
@@ -158,7 +159,7 @@ func (r *Reader) readNext() (*record.Record, error) {
 // resolveCheckpoint verifies endCkpt's checksum against the file on disk
 // and, if it matches, returns that file's records
 // If invalid checksum, deletes the file
-func (r *Reader) resolveCheckpoint(endCkpt EndCheckpoint) (recs []*record.Record, ok bool) {
+func (r *Reader) resolveCheckpoint(endCkpt model.EndCheckpoint) (recs []*record.Record, ok bool) {
 	path := filepath.Join(r.sm.dir, endCkpt.FileName)
 	checksum, err := checksumFile(path)
 	if err != nil {

@@ -1,4 +1,4 @@
-package catalog
+package model
 
 import "encoding/json"
 

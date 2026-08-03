@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"durable-mq/model"
 	"durable-mq/record"
 	"fmt"
 	"sync"
@@ -18,13 +19,13 @@ func NewCatalog() *Catalog {
 
 type QueueInfo struct {
 	Name        string
-	SubPolicies map[string]SubPolicy
+	SubPolicies map[string]model.SubPolicy
 }
 
 func NewQueueInfo(name string) *QueueInfo {
 	return &QueueInfo{
 		Name:        name,
-		SubPolicies: make(map[string]SubPolicy),
+		SubPolicies: make(map[string]model.SubPolicy),
 	}
 }
 
@@ -82,14 +83,14 @@ func (c *Catalog) removeQueue(queueName string) {
 	delete(c.queues, queueName)
 }
 
-func (c *Catalog) FetchQueueSubList(queueName string) (map[string]SubPolicy, bool) {
+func (c *Catalog) FetchQueueSubList(queueName string) (map[string]model.SubPolicy, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	q, ok := c.queues[queueName]
 	if !ok {
 		return nil, false
 	}
-	policies := make(map[string]SubPolicy, len(q.SubPolicies))
+	policies := make(map[string]model.SubPolicy, len(q.SubPolicies))
 	for name, policy := range q.SubPolicies {
 		policies[name] = policy
 	}
@@ -97,7 +98,7 @@ func (c *Catalog) FetchQueueSubList(queueName string) (map[string]SubPolicy, boo
 }
 
 func (c *Catalog) updateSubPolicy(queueName string, payload []byte) error {
-	subPolicy, err := DecodeSubPolicy(payload)
+	subPolicy, err := model.DecodeSubPolicy(payload)
 	if err != nil {
 		return err
 	}
@@ -112,7 +113,7 @@ func (c *Catalog) updateSubPolicy(queueName string, payload []byte) error {
 }
 
 func (c *Catalog) removeSubPolicy(queueName string, payload []byte) error {
-	subPolicy, err := DecodeSubPolicy(payload)
+	subPolicy, err := model.DecodeSubPolicy(payload)
 	if err != nil {
 		return err
 	}

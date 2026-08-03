@@ -1,7 +1,7 @@
 package queue
 
 import (
-	"durable-mq/catalog"
+	"durable-mq/model"
 	"fmt"
 	"sync"
 )
@@ -38,10 +38,10 @@ type QueueMsg struct {
 	Payload           string
 	AckedSubs         map[string]struct{} // Acked or Ran out of Retries (No DLQ yet)
 	RetryMap          map[string]int      // Maps Subscriber names to their retry count
-	SubPolicySnapshot map[string]catalog.SubPolicy
+	SubPolicySnapshot map[string]model.SubPolicy
 }
 
-func NewQueueMsg(msgId string, payload string, subPolicySnapshot map[string]catalog.SubPolicy, ackedSubs map[string]struct{}) *QueueMsg {
+func NewQueueMsg(msgId string, payload string, subPolicySnapshot map[string]model.SubPolicy, ackedSubs map[string]struct{}) *QueueMsg {
 	if ackedSubs == nil {
 		ackedSubs = make(map[string]struct{})
 	}
