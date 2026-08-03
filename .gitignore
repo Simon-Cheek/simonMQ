@@ -1,2 +1,4 @@
 .idea
 durable-wal/
+durable-mq/e2e-tests/durable-mq-server
+durable-mq/e2e-tests/chaos-server.log

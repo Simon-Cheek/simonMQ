@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"durable-mq/catalog"
 	"durable-mq/coordinator"
 	"durable-mq/model"
 	"fmt"
@@ -142,6 +143,10 @@ func (b *Broker) EnqueueFromWAL(queueName string, msgId string, payload string,
 	}
 	msg := NewQueueMsg(msgId, payload, subPolicies, ackedSubs)
 	q.Add(msg)
+}
+
+func (b *Broker) AllQueueInfo() []catalog.QueueInfo {
+	return b.cord.AllQueueInfo()
 }
 
 func (b *Broker) AddSubscriber(metadata model.SubPolicy, queueName string) error {

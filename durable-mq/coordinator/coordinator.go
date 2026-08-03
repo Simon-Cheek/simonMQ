@@ -84,6 +84,10 @@ func (c *Coordinator) ReplayLog() ([]string,
 	return catalogSnapshot, deliveryResults, nil
 }
 
+func (c *Coordinator) AllQueueInfo() []catalog.QueueInfo {
+	return c.cat.AllQueueInfo()
+}
+
 func (c *Coordinator) handleEnqueue(rec record.Record) error {
 	return c.deli.ProcessEnqueue(rec)
 }

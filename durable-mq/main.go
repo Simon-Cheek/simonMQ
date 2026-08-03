@@ -20,6 +20,7 @@ func main() {
 
 	srv := NewServer(b)
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /queues", srv.HandleListQueues)
 	mux.HandleFunc("POST /queues/{queueName}/messages", srv.HandleEnqueue)
 	mux.HandleFunc("POST /queues/{queueName}", srv.HandleQueueCreation)
 	mux.HandleFunc("DELETE /queues/{queueName}", srv.HandleQueueDeletion)

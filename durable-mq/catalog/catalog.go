@@ -83,6 +83,21 @@ func (c *Catalog) removeQueue(queueName string) {
 	delete(c.queues, queueName)
 }
 
+func (c *Catalog) AllQueueInfo() []QueueInfo {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	all := make([]QueueInfo, 0, len(c.queues))
+	for _, q := range c.queues {
+		subs := make(map[string]model.SubPolicy, len(q.SubPolicies))
+		for name, policy := range q.SubPolicies {
+			subs[name] = policy
+		}
+		all = append(all, QueueInfo{Name: q.Name, SubPolicies: subs})
+	}
+	return all
+}
+
 func (c *Catalog) FetchQueueSubList(queueName string) (map[string]model.SubPolicy, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -20,6 +20,17 @@ func NewServer(b *queue.Broker) *Server {
 	return &Server{broker: b}
 }
 
+// HandleListQueues returns every known queue with its subscriber policies nested.
+// GET /queues
+func (s *Server) HandleListQueues(w http.ResponseWriter, r *http.Request) {
+	queues := s.broker.AllQueueInfo()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(queues); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 // HandleQueueCreation handles queue creation.
 // POST /queues/{queueName}
 func (s *Server) HandleQueueCreation(w http.ResponseWriter, r *http.Request) {
