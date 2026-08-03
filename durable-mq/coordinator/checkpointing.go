@@ -20,12 +20,18 @@ func (c *Coordinator) maybeCheckpoint() {
 	}()
 }
 
+func (c *Coordinator) appendLocked(rec *record.Record) (uint64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.log.Append(rec)
+}
+
 func (c *Coordinator) runCheckpoint() {
 	// Append BEGIN_CHECKPOINT
 	rec := record.Record{
 		OpType: record.OpBeginCheckpoint,
 	}
-	lsn, err := c.log.Append(&rec)
+	lsn, err := c.appendLocked(&rec)
 	if err != nil {
 		panic(err)
 	}
@@ -62,7 +68,7 @@ func (c *Coordinator) runCheckpoint() {
 		OpType:  record.OpEndCheckpoint,
 		Payload: payload,
 	}
-	if _, err := c.log.Append(&endCkptRec); err != nil {
+	if _, err := c.appendLocked(&endCkptRec); err != nil {
 		panic(err)
 	}
 
