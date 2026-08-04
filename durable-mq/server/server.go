@@ -1,11 +1,11 @@
-package main
+package server
 
 import (
-	"durable-mq/model"
 	"encoding/json"
 	"io"
 	"net/http"
 
+	"durable-mq/model"
 	"durable-mq/queue"
 )
 
@@ -18,6 +18,21 @@ type Server struct {
 // NewServer wires an HTTP layer around an existing Broker.
 func NewServer(b *queue.Broker) *Server {
 	return &Server{broker: b}
+}
+
+// Routes returns the mux carrying every route the server exposes. main and
+// tests both go through this, so a route can't be exercised in one and
+// missing from the other.
+func (s *Server) Routes() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /queues", s.HandleListQueues)
+	mux.HandleFunc("POST /queues/{queueName}/messages", s.HandleEnqueue)
+	mux.HandleFunc("POST /queues/{queueName}", s.HandleQueueCreation)
+	mux.HandleFunc("DELETE /queues/{queueName}", s.HandleQueueDeletion)
+	mux.HandleFunc("POST /queues/{queueName}/subscribers", s.HandleSubPolicyCreation)
+	mux.HandleFunc("PUT /queues/{queueName}/subscribers/{SubName}", s.HandleSubPolicyUpdate)
+	mux.HandleFunc("DELETE /queues/{queueName}/subscribers/{SubName}", s.HandleSubPolicyDeletion)
+	return mux
 }
 
 // HandleListQueues returns every known queue with its subscriber policies nested.

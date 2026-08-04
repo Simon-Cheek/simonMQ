@@ -43,7 +43,7 @@ func (c *Coordinator) runCheckpoint() {
 	}
 
 	// Compile new list of records using dedup logic
-	compactedRecs := c.compactRecs(fetchedRecs)
+	compactedRecs := CompactRecords(fetchedRecs)
 
 	// Write checkpoint file to disk
 	checkpointFileId, err := uuid.NewUUID()
@@ -95,7 +95,9 @@ func newCompactionState() *compactionState {
 	}
 }
 
-func (c *Coordinator) compactRecs(recs []*record.Record) []*record.Record {
+// CompactRecords collapses a window of WAL records into the smallest set that
+// replays to the same state. Pure — it reads nothing but recs.
+func CompactRecords(recs []*record.Record) []*record.Record {
 	s := newCompactionState()
 
 	for _, rec := range recs {
@@ -109,9 +111,7 @@ func (c *Coordinator) compactRecs(recs []*record.Record) []*record.Record {
 		case record.OpCreateQueue:
 			s.applyCreateQueue(rec)
 		case record.OpDeleteQueue:
-			qName := rec.QueueName
-			delete(s.createdQueues, qName)
-			delete(s.createdSubs, qName)
+			s.applyDeleteQueue(rec)
 		case record.OpUpdateSubPolicy:
 			s.applyUpdateSubPolicy(rec)
 		case record.OpDeleteSubPolicy:
@@ -120,6 +120,25 @@ func (c *Coordinator) compactRecs(recs []*record.Record) []*record.Record {
 	}
 
 	return s.compacted()
+}
+
+// applyDeleteQueue drops the queue's own state and every message addressed to
+// it. Dropping the messages matters: ReplayLog calls DeleteQueueMessages on
+// DELETE_QUEUE, so keeping them here would let a message outlive its queue and
+// be redelivered if a queue of the same name were later recreated.
+func (s *compactionState) applyDeleteQueue(rec *record.Record) {
+	qName := rec.QueueName
+	delete(s.createdQueues, qName)
+	delete(s.createdSubs, qName)
+
+	for msgId, enqRec := range s.inFlightMessages {
+		if enqRec.QueueName != qName {
+			continue
+		}
+		delete(s.inFlightMessages, msgId)
+		delete(s.remainingSubs, msgId)
+		delete(s.inFlightAcks, msgId)
+	}
 }
 
 func (s *compactionState) applyEnqueue(rec *record.Record) {
@@ -159,12 +178,10 @@ func (s *compactionState) applyAck(rec *record.Record) {
 
 func (s *compactionState) applyCreateQueue(rec *record.Record) {
 	qName := rec.QueueName
-	if _, ok := s.createdQueues[qName]; !ok {
-		s.createdQueues[qName] = rec
-	}
-	if _, ok := s.createdSubs[qName]; !ok {
-		s.createdSubs[qName] = make(map[string]*record.Record)
-	}
+	s.createdQueues[qName] = rec
+	// Unconditional reset, mirroring catalog.createQueue: re-creating a queue
+	// under an existing name discards its policies rather than merging them.
+	s.createdSubs[qName] = make(map[string]*record.Record)
 }
 
 func (s *compactionState) applyUpdateSubPolicy(rec *record.Record) {
