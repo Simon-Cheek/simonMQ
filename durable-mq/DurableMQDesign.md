@@ -34,6 +34,3 @@ More detailed information on the Write Ahead Log (WAL) can be found in `./WalDes
 - Double check graceful handling of corrupted records in WAL
 - More granular locks in `catalog` for greater performance
 - New msgID system (UUID is not performant)
-- Preserve retry attempt #s for unACKed subscribers on crash + restart
-  - Currently only preserves which subscribers have ACKed
-- Checkpointing system in `segment-mgr` (WAL does not currently checkpoint / compact)
