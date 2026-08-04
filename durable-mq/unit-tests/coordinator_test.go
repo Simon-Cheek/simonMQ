@@ -337,6 +337,46 @@ func TestCoordinatorReplayHandlesRecreatedQueue(t *testing.T) {
 	}
 }
 
+func TestCoordinatorCloseThenReopen(t *testing.T) {
+	c := newTestCoordinator(t)
+
+	if err := c.CreateQueue("orders"); err != nil {
+		t.Fatalf("CreateQueue returned error: %v", err)
+	}
+	if err := c.UpdateSubPolicy("orders", subPolicy("sub1")); err != nil {
+		t.Fatalf("UpdateSubPolicy returned error: %v", err)
+	}
+	if _, err := c.Enqueue("orders", "msg-1", "hello"); err != nil {
+		t.Fatalf("Enqueue returned error: %v", err)
+	}
+
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+
+	// Everything written before the close must still be there afterward.
+	restarted := reopenCoordinator(t)
+	queues, deliveryData, err := restarted.ReplayLog()
+	if err != nil {
+		t.Fatalf("ReplayLog after close returned error: %v", err)
+	}
+	if len(queues) != 1 || queues[0] != "orders" {
+		t.Errorf("replayed queues = %v, want [orders]", queues)
+	}
+	msg := msgInfo(t, deliveryData, "orders", "msg-1")
+	if msg.Content != "hello" {
+		t.Errorf("content = %q, want %q", msg.Content, "hello")
+	}
+
+	// And the reopened coordinator is fully usable.
+	if _, err := restarted.Enqueue("orders", "msg-2", "after reopen"); err != nil {
+		t.Fatalf("Enqueue after reopen returned error: %v", err)
+	}
+	if err := restarted.Close(); err != nil {
+		t.Fatalf("Close on the reopened coordinator returned error: %v", err)
+	}
+}
+
 func TestCoordinatorReplayPreservesMultipleMessages(t *testing.T) {
 	c := newTestCoordinator(t)
 

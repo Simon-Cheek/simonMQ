@@ -358,6 +358,40 @@ func TestCompactOutputOrderingIsReplayable(t *testing.T) {
 	replayRecords(t, out) // the real proof: replay must not error
 }
 
+func TestCompactDropsMessagesWithNoSubscribers(t *testing.T) {
+	var log recordLog
+	log.createQueue("orders")
+	// Enqueued before anyone subscribed. The snapshot is fixed at enqueue
+	// time, so this message is undeliverable forever and no ack can ever
+	// arrive to retire it — it must not ride along in every future checkpoint.
+	log.enqueue(t, "orders", "orphan", "nobody is listening", map[string]model.SubPolicy{})
+	log.updateSub(t, "orders", subPolicy("sub1"))
+	log.enqueue(t, "orders", "deliverable", "someone is listening", twoSubs())
+
+	out := coordinator.CompactRecords(log)
+
+	if n := countOps(out, record.OpEnqueue); n != 1 {
+		t.Fatalf("got %d ENQUEUE records, want 1 (only the deliverable message)", n)
+	}
+	enq, err := model.DecodeEnqueue(out[slices.IndexFunc(out, func(r *record.Record) bool {
+		return r.OpType == record.OpEnqueue
+	})].Payload)
+	if err != nil {
+		t.Fatalf("DecodeEnqueue returned error: %v", err)
+	}
+	if enq.MsgId != "deliverable" {
+		t.Errorf("surviving message = %q, want %q", enq.MsgId, "deliverable")
+	}
+
+	// Repeated compaction must not reintroduce it either.
+	for i := 0; i < 3; i++ {
+		out = coordinator.CompactRecords(out)
+	}
+	if n := countOps(out, record.OpEnqueue); n != 1 {
+		t.Errorf("got %d ENQUEUE records after repeated compaction, want a steady 1", n)
+	}
+}
+
 func TestCompactEmptyInput(t *testing.T) {
 	out := coordinator.CompactRecords(nil)
 	if len(out) != 0 {
@@ -426,6 +460,14 @@ func TestCompactPreservesLiveState(t *testing.T) {
 				log.createQueue("orders")
 				log.updateSub(t, "orders", subPolicy("new"))
 				log.enqueue(t, "orders", "msg-new", "after", twoSubs())
+			},
+		},
+		{
+			name: "message enqueued with no subscribers",
+			build: func(t *testing.T, log *recordLog) {
+				log.createQueue("orders")
+				log.enqueue(t, "orders", "orphan", "undeliverable", map[string]model.SubPolicy{})
+				log.updateSub(t, "orders", subPolicy("sub1"))
 			},
 		},
 		{

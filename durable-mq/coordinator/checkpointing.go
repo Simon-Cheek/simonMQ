@@ -1,6 +1,9 @@
 package coordinator
 
 import (
+	"fmt"
+	"log"
+
 	"durable-mq/model"
 	"durable-mq/record"
 
@@ -16,7 +19,18 @@ func (c *Coordinator) maybeCheckpoint() {
 	}
 	go func() {
 		defer c.checkpointing.Store(false)
-		c.runCheckpoint()
+		// A checkpoint is an optimization, never a correctness requirement:
+		// the WAL alone always replays to correct state. Nothing that happens
+		// in here may take down the serving path, so failures — including an
+		// unexpected panic — are logged and left for a later write to retry.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("durable-mq: checkpoint panicked, retrying on a later write: %v", r)
+			}
+		}()
+		if err := c.runCheckpoint(); err != nil {
+			log.Printf("durable-mq: checkpoint failed, retrying on a later write: %v", err)
+		}
 	}()
 }
 
@@ -26,20 +40,24 @@ func (c *Coordinator) appendLocked(rec *record.Record) (uint64, error) {
 	return c.log.Append(rec)
 }
 
-func (c *Coordinator) runCheckpoint() {
+// runCheckpoint derives and installs one checkpoint. Bailing out at any step
+// is safe: without a durable END_CHECKPOINT nothing treats the work as valid,
+// so a half-finished attempt leaves only files that startup cleanup sweeps —
+// an orphan .tmp, an unreferenced .ckpt, or a BEGIN_CHECKPOINT replay ignores.
+func (c *Coordinator) runCheckpoint() error {
 	// Append BEGIN_CHECKPOINT
 	rec := record.Record{
 		OpType: record.OpBeginCheckpoint,
 	}
 	lsn, err := c.appendLocked(&rec)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("appending BEGIN_CHECKPOINT: %w", err)
 	}
 
 	// Fetch all logs up until BEGIN_CHECKPOINT
 	fetchedRecs, err := c.log.ReadUpTo(lsn)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("reading the log up to LSN %d: %w", lsn, err)
 	}
 
 	// Compile new list of records using dedup logic
@@ -48,11 +66,11 @@ func (c *Coordinator) runCheckpoint() {
 	// Write checkpoint file to disk
 	checkpointFileId, err := uuid.NewUUID()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("generating a checkpoint file id: %w", err)
 	}
 	checkpointFileName, checksum, err := c.log.WriteCheckpointFile(checkpointFileId.String(), compactedRecs)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("writing the checkpoint file: %w", err)
 	}
 
 	// Write END_CHECKPOINT log
@@ -62,19 +80,25 @@ func (c *Coordinator) runCheckpoint() {
 	}
 	payload, err := model.EncodeEndCheckpoint(endCkpt)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("encoding the END_CHECKPOINT payload: %w", err)
 	}
 	endCkptRec := record.Record{
 		OpType:  record.OpEndCheckpoint,
 		Payload: payload,
 	}
 	if _, err := c.appendLocked(&endCkptRec); err != nil {
-		panic(err)
+		return fmt.Errorf("appending END_CHECKPOINT for %s: %w", checkpointFileName, err)
 	}
 
-	// Delete old, unnecessary files
-	c.log.DeleteSegmentsBefore(lsn)
-	c.log.DeleteCheckpointFilesExcept(checkpointFileName)
+	// Delete old, unnecessary files. Best-effort past this point — the
+	// checkpoint is already durable, so leftovers cost disk, not correctness.
+	if err := c.log.DeleteSegmentsBefore(lsn); err != nil {
+		log.Printf("durable-mq: cleaning up segments before LSN %d: %v", lsn, err)
+	}
+	if err := c.log.DeleteCheckpointFilesExcept(checkpointFileName); err != nil {
+		log.Printf("durable-mq: cleaning up superseded checkpoint files: %v", err)
+	}
+	return nil
 }
 
 type compactionState struct {
@@ -150,6 +174,9 @@ func (s *compactionState) applyEnqueue(rec *record.Record) {
 	if err != nil {
 		return
 	}
+	if len(enq.SubList) == 0 {
+		return
+	} // Enqueued with nobody subscribed: just drop
 	s.inFlightMessages[enq.MsgId] = rec
 	s.remainingSubs[enq.MsgId] = make(map[string]struct{})
 	for _, sub := range enq.SubList {

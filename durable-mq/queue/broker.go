@@ -113,6 +113,20 @@ func (b *Broker) DeleteQueue(name string) error {
 	return nil
 }
 
+// Close stops every queue worker and releases the WAL
+func (b *Broker) Close() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for _, q := range b.queues {
+		close(q.isClosed) // stop the worker goroutine
+	}
+	b.queues = make(map[string]*Queue)
+	b.numQueues = 0
+
+	return b.cord.Close()
+}
+
 func (b *Broker) Enqueue(queueName string, payload string) error {
 	b.mu.Lock()
 	q, ok := b.queues[queueName]

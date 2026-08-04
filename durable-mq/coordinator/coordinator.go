@@ -88,6 +88,13 @@ func (c *Coordinator) AllQueueInfo() []catalog.QueueInfo {
 	return c.cat.AllQueueInfo()
 }
 
+// Close releases the WAL's file handles
+func (c *Coordinator) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.log.Close()
+}
+
 func (c *Coordinator) handleEnqueue(rec record.Record) error {
 	return c.deli.ProcessEnqueue(rec)
 }
