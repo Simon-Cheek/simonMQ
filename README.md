@@ -36,15 +36,4 @@ Pub/Sub model concurrently sending Messages to each queue's configured subscribe
 ## Durable-MQ
 Pub/Sub model identical in functionality to Push-MQ with one core distinction: durable storage.
 - Write Ahead Log (WAL) which is used to rebuild queue and subscriber state after a crash
-
-## Performance-Tests
-Used to understand the performance differences between the various implementations.
-
-### Simple-MQ vs Simple-MQ-2
-- Simple-MQ and Simple-MQ-2 had near identical throughput in various environments
-  - CPU (Unit) Bound tests
-    - Near identical throughput, unless at high contention levels (8+ cores contending for same Queues)
-    - Throughput was bottlenecked by UUID generation more than anything
-  - External (HTTP) tests
-    - Near identical throughput regardless of contention levels
-    - Possibly HTTP/JSON bottlenecked? Could try gRPC implementation next
+- Much more detailed documentation can be found within `/durable-mq`
