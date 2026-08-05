@@ -12,10 +12,11 @@ type Writer struct {
 	currentSize int64
 	maxSegSize  int64
 	nextLSN     uint64
+	mode        Mode
 }
 
 // OpenWriter resumes from whatever sm.Recover() finds on disk
-func OpenWriter(sm *SegmentManager, maxSegSize int64) (*Writer, error) {
+func OpenWriter(sm *SegmentManager, maxSegSize int64, mode Mode) (*Writer, error) {
 	rs, err := sm.Recover()
 	if err != nil {
 		return nil, err
@@ -26,6 +27,7 @@ func OpenWriter(sm *SegmentManager, maxSegSize int64) (*Writer, error) {
 		currentSize: rs.Size,
 		maxSegSize:  maxSegSize,
 		nextLSN:     rs.NextLSN,
+		mode:        mode,
 	}, nil
 }
 
@@ -58,8 +60,12 @@ func (w *Writer) Append(rec *record.Record) (uint64, error) {
 	if _, err = w.file.Write(buf); err != nil {
 		return 0, err
 	}
-	if err = w.file.Sync(); err != nil {
-		return 0, err
+	// The one line that separates "written" from "durable". ModeNoSync skips
+	// it so a benchmark can price fsync on its own; nothing else may.
+	if w.mode == ModeSync {
+		if err = w.file.Sync(); err != nil {
+			return 0, err
+		}
 	}
 	w.currentSize += int64(len(buf))
 	w.nextLSN++

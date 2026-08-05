@@ -25,10 +25,34 @@ type Coordinator struct {
 
 // WAL Config
 const walDirectory = "durable-wal"
-const maxLogSize = 16 * 8 * 1024 * 1024 // 16MB
+const maxLogSize = 16 * 8 * 1024 * 1024 // 128MB
+
+// Config tunes the durable layer. The zero value is the production
+// configuration — a fully durable, fsync-per-append WAL in ./durable-wal —
+// so anything weaker has to be asked for by name.
+type Config struct {
+	Dir        string   // WAL directory; empty means walDirectory
+	MaxSegSize int64    // segment roll threshold; 0 means maxLogSize
+	Mode       wal.Mode // durability mode; zero value is wal.ModeSync
+}
+
+func (c Config) withDefaults() Config {
+	if c.Dir == "" {
+		c.Dir = walDirectory
+	}
+	if c.MaxSegSize == 0 {
+		c.MaxSegSize = maxLogSize
+	}
+	return c
+}
 
 func NewCoordinator() (*Coordinator, error) {
-	waLog, err := wal.Open(walDirectory, maxLogSize)
+	return NewCoordinatorWithConfig(Config{})
+}
+
+func NewCoordinatorWithConfig(cfg Config) (*Coordinator, error) {
+	cfg = cfg.withDefaults()
+	waLog, err := wal.OpenWithMode(cfg.Dir, cfg.MaxSegSize, cfg.Mode)
 	if err != nil {
 		return nil, err
 	}
@@ -38,6 +62,9 @@ func NewCoordinator() (*Coordinator, error) {
 		log:  waLog,
 	}, nil
 }
+
+// Mode reports the durability mode the WAL is running in.
+func (c *Coordinator) Mode() wal.Mode { return c.log.Mode() }
 
 func (c *Coordinator) ReplayLog() ([]string,
 	map[string]*delivery.DeliveryQueueInfo, error) {

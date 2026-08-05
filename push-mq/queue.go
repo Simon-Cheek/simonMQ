@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 const initialCapacity = 10
@@ -40,9 +42,14 @@ func NewQueue(name string) *Queue {
 	}
 }
 
+// NewQueueMsg mints a message with a unique id. The UUID is deliberately the
+// same cost here as in durable-mq, which needs unique ids to address acks in
+// the WAL — keeping them identical means an enqueue benchmark across the two
+// isn't measuring id generation on one side and a string concat on the other.
+// Both are still worth replacing with something cheaper than a UUID.
 func NewQueueMsg(queueName string, payload string) *QueueMsg {
 	return &QueueMsg{
-		MsgId:     queueName + "/", //+ uuid.New().String(), // Todo: Replace with non UUID string
+		MsgId:     queueName + "/" + uuid.New().String(),
 		Payload:   payload,
 		AckedSubs: make(map[string]struct{}),
 		RetryMap:  make(map[string]int),

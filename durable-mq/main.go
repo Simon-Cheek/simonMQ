@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,24 +11,43 @@ import (
 	"syscall"
 	"time"
 
+	"durable-mq/coordinator"
 	"durable-mq/queue"
 	"durable-mq/server"
+	"durable-mq/wal"
 )
-
-const port = "8081"
 
 const shutdownTimeout = 10 * time.Second
 
 func main() {
-	b := queue.NewBroker()
+	port := flag.String("port", "8081", "port to listen on")
+	walDir := flag.String("wal-dir", "", "WAL directory (default durable-wal)")
+	walMode := flag.String("wal-mode", "sync",
+		"durability mode: sync (fsync every append) | nosync (no fsync) | off (no log at all). "+
+			"nosync and off are benchmark-only and are NOT durable.")
+	flag.Parse()
+
+	mode, err := wal.ParseMode(*walMode)
+	if err != nil {
+		log.Fatalf("invalid -wal-mode: %v", err)
+	}
+
+	b := queue.NewBrokerWithConfig(coordinator.Config{Dir: *walDir, Mode: mode})
 
 	if err := b.RestoreWAL(); err != nil {
 		log.Fatalf("failed to restore from WAL: %v", err)
 	}
-	fmt.Println("Successfully restored WAL")
+
+	// Announced on every boot so a benchmark run can never be quietly
+	// non-durable and later be reported as if it were.
+	if mode.Durable() {
+		fmt.Println("Durability: sync (fsync per append) — successfully restored WAL")
+	} else {
+		fmt.Printf("Durability: %s — WARNING: NOT DURABLE, benchmark use only\n", mode)
+	}
 
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    ":" + *port,
 		Handler: server.NewServer(b).Routes(),
 	}
 
@@ -36,7 +56,7 @@ func main() {
 			log.Fatalf("http server error: %v", err)
 		}
 	}()
-	fmt.Println("Listening on :" + port)
+	fmt.Println("Listening on :" + *port)
 
 	// A hard kill skips all of this, which is fine — every append is fsynced
 	// before it's acknowledged, so recovery handles an abrupt exit the same

@@ -4,6 +4,7 @@ import (
 	"durable-mq/catalog"
 	"durable-mq/coordinator"
 	"durable-mq/model"
+	"durable-mq/wal"
 	"fmt"
 	"sync"
 
@@ -19,7 +20,14 @@ type Broker struct {
 }
 
 func NewBroker() *Broker {
-	c, err := coordinator.NewCoordinator()
+	return NewBrokerWithConfig(coordinator.Config{})
+}
+
+// NewBrokerWithConfig builds a Broker over a specific durable-layer config.
+// The zero Config is what NewBroker uses, so this only ever needs naming when
+// a caller wants something other than full durability.
+func NewBrokerWithConfig(cfg coordinator.Config) *Broker {
+	c, err := coordinator.NewCoordinatorWithConfig(cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -29,6 +37,9 @@ func NewBroker() *Broker {
 		cord:      c,
 	}
 }
+
+// Mode reports the durability mode the underlying WAL is running in.
+func (b *Broker) Mode() wal.Mode { return b.cord.Mode() }
 
 func (b *Broker) RestoreWAL() error {
 	qs, dInfo, err := b.cord.ReplayLog()

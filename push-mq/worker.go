@@ -106,7 +106,10 @@ func (q *Queue) SendMsg(sub *SubPolicy, msg *QueueMsg) bool {
 		return false
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	// Any 2xx counts as delivered. Must stay identical to durable-mq's
+	// sendMsg: the two are benchmarked against the same subscriber, and a
+	// stricter rule here would turn every accepted delivery into a retry.
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return false
 	}
 	return true
