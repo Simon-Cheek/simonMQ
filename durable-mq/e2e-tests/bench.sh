@@ -28,6 +28,7 @@
 # Tunables:
 #   ARMS REPS DURATION WARMUP RATE QUEUES PUBS_PER_QUEUE SUBS_PER_QUEUE
 #   PAYLOAD BROKER SINK_ADVERTISE SINK_BASE_PORT MANAGE_BROKER OUT_DIR
+#   MAX_SEG_SIZE CKPT_THRESHOLD
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +45,12 @@ QUEUES="${QUEUES:-3}"
 PUBS_PER_QUEUE="${PUBS_PER_QUEUE:-1}"
 SUBS_PER_QUEUE="${SUBS_PER_QUEUE:-1}"
 PAYLOAD="${PAYLOAD:-64}"
+
+# WAL geometry. Empty/0 means the broker's production defaults (128MB
+# segments, checkpoint every 4). Turn both down to make the checkpoint path
+# actually run inside a 30s benchmark instead of needing ~384MB of log.
+MAX_SEG_SIZE="${MAX_SEG_SIZE:-}"
+CKPT_THRESHOLD="${CKPT_THRESHOLD:-0}"
 
 BROKER="${BROKER:-http://localhost:8081}"
 SINK_ADVERTISE="${SINK_ADVERTISE:-http://localhost}"
@@ -112,7 +119,14 @@ start_broker() {
             ;;
         durable-off|durable-nosync|durable-sync)
             local mode="${arm#durable-}"
+            local extra=()
+            [[ -n "$MAX_SEG_SIZE" ]] && extra+=(-max-seg-size "$MAX_SEG_SIZE")
+            [[ "$CKPT_THRESHOLD" != "0" ]] && extra+=(-checkpoint-threshold "$CKPT_THRESHOLD")
+            # ${a[@]+"${a[@]}"} rather than "${a[@]}": under `set -u`, bash 3.2
+            # (which is what macOS ships) treats an empty array expansion as an
+            # unbound variable, and empty is the default path here.
             "$BIN_DIR/durable-mq" -port 8081 -wal-dir "$WAL_DIR" -wal-mode "$mode" \
+                ${extra[@]+"${extra[@]}"} \
                 >"$SCRIPT_DIR/broker.log" 2>&1 &
             ;;
         *)

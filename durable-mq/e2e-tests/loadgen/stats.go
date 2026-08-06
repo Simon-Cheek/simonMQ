@@ -41,16 +41,26 @@ type Result struct {
 	DurationSec         float64 `json:"DurationSec"`
 	WarmupSec           float64 `json:"WarmupSec"`
 
-	// Counts cover the measurement window only (warm-up excluded).
+	// Attempted/Accepted/Failed count publishes *scheduled* in the measurement
+	// window (warm-up excluded), which is the same set the latency figures
+	// describe. They may complete after the window closes.
 	Attempted uint64 `json:"Attempted"`
 	Accepted  uint64 `json:"Accepted"`
 	Failed    uint64 `json:"Failed"`
 
-	// AcceptedPerSec is the broker's achieved throughput: accepted publishes
-	// divided by the measurement window. Compare against OfferedRate to see
-	// whether the run was saturated.
-	AcceptedPerSec float64 `json:"AcceptedPerSec"`
-	Latency        Latency `json:"Latency"`
+	// CompletedInWindow counts publishes that actually *finished* inside the
+	// window, and is the numerator behind AcceptedPerSec. It falls below
+	// Accepted exactly when the broker could not keep up and spilled work
+	// past the end of the run.
+	CompletedInWindow uint64  `json:"CompletedInWindow"`
+	AcceptedPerSec    float64 `json:"AcceptedPerSec"`
+
+	// ElapsedSec is when the last publish finally completed, measured from the
+	// start of the run. Materially larger than DurationSec means the broker
+	// was still draining after the load stopped.
+	ElapsedSec float64 `json:"ElapsedSec"`
+
+	Latency Latency `json:"Latency"`
 
 	// Delivered is what the sink actually received during the run, if it was
 	// reachable. Publishes are acknowledged before delivery happens, so this
@@ -59,43 +69,79 @@ type Result struct {
 	DeliveredKnown bool   `json:"DeliveredKnown"`
 }
 
-// summarize filters out the warm-up period and computes the percentiles over
-// what remains.
-func summarize(samples []sample, warmup, total time.Duration) (Latency, uint64, uint64, float64) {
+// summary is what one run reduces to. Latency and throughput are deliberately
+// derived from different subsets of the samples — see summarize.
+type summary struct {
+	Latency           Latency
+	Attempted         uint64
+	Accepted          uint64
+	CompletedInWindow uint64
+	AcceptedPerSec    float64
+	ElapsedSec        float64
+}
+
+// summarize reduces one run's samples, using two different filters:
+//
+//   - Latency covers requests *scheduled* inside the window, however long they
+//     took. Filtering these by completion instead would discard precisely the
+//     slowest requests and report a saturated broker as fast.
+//   - Throughput counts completions that *landed* inside the window. Dividing
+//     everything scheduled in the window by the window length — which this
+//     used to do — reports the offered rate rather than the achieved one the
+//     moment a broker falls behind, because the work spilled past the window
+//     but the divisor didn't grow to match.
+//
+// For an unsaturated run the two agree, since almost everything scheduled in
+// the window also finishes there. They diverge exactly when it matters.
+func summarize(samples []sample, warmup, total time.Duration) summary {
 	lat := make([]time.Duration, 0, len(samples))
-	var attempted, accepted uint64
+	var out summary
 	var sum time.Duration
+	var lastCompletion time.Duration
 
 	for _, s := range samples {
+		completion := s.scheduled + s.latency
+		if completion > lastCompletion {
+			lastCompletion = completion
+		}
+
+		if s.ok && completion >= warmup && completion < total {
+			out.CompletedInWindow++
+		}
+
 		if s.scheduled < warmup {
 			continue // still warming up: connections cold, caches empty
 		}
-		attempted++
+		out.Attempted++
 		if !s.ok {
 			continue
 		}
-		accepted++
+		out.Accepted++
 		lat = append(lat, s.latency)
 		sum += s.latency
 	}
+
+	out.ElapsedSec = lastCompletion.Seconds()
 
 	window := (total - warmup).Seconds()
 	if window <= 0 {
 		window = math.NaN()
 	}
+	out.AcceptedPerSec = float64(out.CompletedInWindow) / window
 
 	if len(lat) == 0 {
-		return Latency{}, attempted, accepted, 0
+		return out
 	}
 	sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
 
-	return Latency{
+	out.Latency = Latency{
 		Mean: ms(sum / time.Duration(len(lat))),
 		P50:  ms(percentile(lat, 50)),
 		P90:  ms(percentile(lat, 90)),
 		P99:  ms(percentile(lat, 99)),
 		Max:  ms(lat[len(lat)-1]),
-	}, attempted, accepted, float64(accepted) / window
+	}
+	return out
 }
 
 // percentile uses nearest-rank on the sorted slice. Samples are kept raw

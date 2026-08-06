@@ -99,7 +99,7 @@ func main() {
 		samples = append(samples, s...)
 	}
 
-	lat, attempted, accepted, throughput := summarize(samples, *warmup, *duration)
+	sum := summarize(samples, *warmup, *duration)
 	host, _ := os.Hostname()
 
 	deliveredAtEnd, deliveredKnown := sinkTotal(client, *sink)
@@ -122,11 +122,13 @@ func main() {
 		PayloadBytes:        *payload,
 		DurationSec:         duration.Seconds(),
 		WarmupSec:           warmup.Seconds(),
-		Attempted:           attempted,
-		Accepted:            accepted,
-		Failed:              attempted - accepted,
-		AcceptedPerSec:      throughput,
-		Latency:             lat,
+		Attempted:           sum.Attempted,
+		Accepted:            sum.Accepted,
+		Failed:              sum.Attempted - sum.Accepted,
+		CompletedInWindow:   sum.CompletedInWindow,
+		AcceptedPerSec:      sum.AcceptedPerSec,
+		ElapsedSec:          sum.ElapsedSec,
+		Latency:             sum.Latency,
 		Delivered:           delivered,
 		DeliveredKnown:      deliveredKnown,
 	}
@@ -141,8 +143,12 @@ func main() {
 		log.Fatalf("writing %s: %v", *outPath, err)
 	}
 
-	log.Printf("%s rep=%d: %.0f msg/s accepted (offered %.0f), p50=%.2fms p99=%.2fms, failed=%d",
-		*arm, *rep, res.AcceptedPerSec, res.OfferedRate, lat.P50, lat.P99, res.Failed)
+	drain := ""
+	if res.ElapsedSec > res.DurationSec*1.05 {
+		drain = fmt.Sprintf(", drained for %.1fs past the run", res.ElapsedSec-res.DurationSec)
+	}
+	log.Printf("%s rep=%d: %.0f msg/s completed (offered %.0f), p50=%.2fms p99=%.2fms, failed=%d%s",
+		*arm, *rep, res.AcceptedPerSec, res.OfferedRate, sum.Latency.P50, sum.Latency.P99, res.Failed, drain)
 }
 
 // newClient returns a client with a connection pool large enough for the

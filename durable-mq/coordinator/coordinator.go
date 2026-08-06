@@ -34,6 +34,11 @@ type Config struct {
 	Dir        string   // WAL directory; empty means walDirectory
 	MaxSegSize int64    // segment roll threshold; 0 means maxLogSize
 	Mode       wal.Mode // durability mode; zero value is wal.ModeSync
+	// CheckpointThreshold is how many segments must accumulate before a
+	// checkpoint runs; 0 means wal.DefaultCheckpointThreshold. Together with
+	// MaxSegSize this sets how much log is written between checkpoints —
+	// the pair a benchmark turns down to exercise the checkpoint path.
+	CheckpointThreshold int
 }
 
 func (c Config) withDefaults() Config {
@@ -42,6 +47,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxSegSize == 0 {
 		c.MaxSegSize = maxLogSize
+	}
+	if c.CheckpointThreshold == 0 {
+		c.CheckpointThreshold = wal.DefaultCheckpointThreshold
 	}
 	return c
 }
@@ -52,7 +60,11 @@ func NewCoordinator() (*Coordinator, error) {
 
 func NewCoordinatorWithConfig(cfg Config) (*Coordinator, error) {
 	cfg = cfg.withDefaults()
-	waLog, err := wal.OpenWithMode(cfg.Dir, cfg.MaxSegSize, cfg.Mode)
+	waLog, err := wal.OpenWithOptions(cfg.Dir, wal.Options{
+		MaxSegSize:          cfg.MaxSegSize,
+		Mode:                cfg.Mode,
+		CheckpointThreshold: cfg.CheckpointThreshold,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,8 @@ package wal
 import (
 	"durable-mq/record"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // Mode controls how much durability the log actually provides. ModeSync is
@@ -57,6 +59,33 @@ func ParseMode(s string) (Mode, error) {
 // Durable reports whether this mode survives machine loss.
 func (m Mode) Durable() bool { return m == ModeSync }
 
+// ParseSize parses a byte size written as "512KB", "128MB", "1GB", or a bare
+// byte count. Units are 1024-based, matching how the segment size is spelled
+// out in the code. Exists so a benchmark can dial segment size down far
+// enough to exercise checkpointing without writing hundreds of megabytes.
+func ParseSize(s string) (int64, error) {
+	t := strings.ToUpper(strings.TrimSpace(s))
+	mult := int64(1)
+	switch {
+	case strings.HasSuffix(t, "GB"):
+		mult, t = 1<<30, strings.TrimSuffix(t, "GB")
+	case strings.HasSuffix(t, "MB"):
+		mult, t = 1<<20, strings.TrimSuffix(t, "MB")
+	case strings.HasSuffix(t, "KB"):
+		mult, t = 1<<10, strings.TrimSuffix(t, "KB")
+	case strings.HasSuffix(t, "B"):
+		t = strings.TrimSuffix(t, "B")
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(t), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size %q (want e.g. 1MB, 512KB, or a byte count)", s)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("size %q must be positive", s)
+	}
+	return n * mult, nil
+}
+
 type WAL struct {
 	// In ModeOff sm, w, and r are all nil and offLSN stands in for the
 	// writer's counter. Every method that would touch a nil field is
@@ -70,23 +99,34 @@ type WAL struct {
 	offLSN uint64 // ModeOff only; all appends are serialized by Coordinator.mu
 }
 
-func Open(dir string, maxSegSize int64) (*WAL, error) {
-	return OpenWithMode(dir, maxSegSize, ModeSync)
+// Options configures a WAL. The zero value is not usable on its own —
+// MaxSegSize has no sensible default at this layer — but Mode and
+// CheckpointThreshold both fall back to production values when left unset.
+type Options struct {
+	MaxSegSize int64 // segment roll threshold in bytes; required
+	Mode       Mode  // zero value is ModeSync
+	// CheckpointThreshold is how many segments trigger a checkpoint.
+	// 0 means DefaultCheckpointThreshold.
+	CheckpointThreshold int
 }
 
-func OpenWithMode(dir string, maxSegSize int64, mode Mode) (*WAL, error) {
-	if mode == ModeOff {
+func Open(dir string, maxSegSize int64) (*WAL, error) {
+	return OpenWithOptions(dir, Options{MaxSegSize: maxSegSize})
+}
+
+func OpenWithOptions(dir string, opts Options) (*WAL, error) {
+	if opts.Mode == ModeOff {
 		// Deliberately no directory and no files — an empty WAL dir left
 		// behind by a benchmark run would replay as real state next boot.
-		return &WAL{mode: mode}, nil
+		return &WAL{mode: opts.Mode}, nil
 	}
-	sm, err := NewSegmentManager(dir)
+	sm, err := NewSegmentManagerWithThreshold(dir, opts.CheckpointThreshold)
 	if err != nil {
 		return nil, err
 	}
 	// Writer first: Recover() truncates any torn tail before Reader
 	// ever sees the segment, so replay never reads corrupt trailing bytes.
-	w, err := OpenWriter(sm, maxSegSize, mode)
+	w, err := OpenWriter(sm, opts.MaxSegSize, opts.Mode)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +134,7 @@ func OpenWithMode(dir string, maxSegSize int64, mode Mode) (*WAL, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &WAL{sm: sm, w: w, r: r, mode: mode}, nil
+	return &WAL{sm: sm, w: w, r: r, mode: opts.Mode}, nil
 }
 
 func (l *WAL) Mode() Mode { return l.mode }

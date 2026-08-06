@@ -21,6 +21,12 @@ type SegmentManager struct {
 	dir          string
 	segments     []string // sorted filenames
 	ckptSegments []string
+
+	// ckptThreshold is how many segments must exist before a checkpoint is
+	// due. Configurable so a benchmark can reach the checkpoint path without
+	// first writing hundreds of megabytes; production has no reason to change
+	// it from DefaultCheckpointThreshold.
+	ckptThreshold int
 }
 
 type RecoveryState struct {
@@ -29,13 +35,22 @@ type RecoveryState struct {
 	Size    int64
 }
 
-const checkpointSegmentThreshold = 4
+// DefaultCheckpointThreshold is the number of segments that must accumulate
+// before a checkpoint is triggered.
+const DefaultCheckpointThreshold = 4
 
 func NewSegmentManager(dir string) (*SegmentManager, error) {
+	return NewSegmentManagerWithThreshold(dir, DefaultCheckpointThreshold)
+}
+
+func NewSegmentManagerWithThreshold(dir string, ckptThreshold int) (*SegmentManager, error) {
+	if ckptThreshold < 1 {
+		ckptThreshold = DefaultCheckpointThreshold
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
-	sm := &SegmentManager{dir: dir}
+	sm := &SegmentManager{dir: dir, ckptThreshold: ckptThreshold}
 	if err := sm.refresh(); err != nil {
 		return nil, err
 	}
@@ -76,7 +91,7 @@ func (sm *SegmentManager) Segments() []string {
 }
 
 func (sm *SegmentManager) ShouldCheckpoint() bool {
-	return len(sm.Segments()) >= checkpointSegmentThreshold
+	return len(sm.Segments()) >= sm.ckptThreshold
 }
 
 // SegmentAfter returns the segment immediately following `name`
