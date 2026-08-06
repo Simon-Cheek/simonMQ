@@ -2,3 +2,9 @@
 durable-wal/
 durable-mq/e2e-tests/durable-mq-server
 durable-mq/e2e-tests/chaos-server.log
+
+# bench.sh artifacts
+durable-mq/e2e-tests/bin/
+durable-mq/e2e-tests/results/
+durable-mq/e2e-tests/bench-wal/
+durable-mq/e2e-tests/*.log
