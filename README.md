@@ -36,4 +36,6 @@ Pub/Sub model concurrently sending Messages to each queue's configured subscribe
 ## Durable-MQ
 Pub/Sub model identical in functionality to Push-MQ with one core distinction: durable storage.
 - Write Ahead Log (WAL) which is used to rebuild queue and subscriber state after a crash
-- Much more detailed documentation can be found within `/durable-mq`
+- Much more detailed documentation can be found within `/durable-mq/DurableMQDesign.md`
+- WAL implementation info can be found in `/durable-mq/WalDesign.md`
+- Performance tests comparing `push-mq` and `durable-mq` can be found in `/durable-mq/Performance.md`
