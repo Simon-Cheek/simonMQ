@@ -17,13 +17,13 @@
 # a smoke test, but the three compete for CPU, so see REMOTE below for real
 # numbers):
 #
-#   ./e2e-tests/bench.sh
+#   ./e2e-tests/scripts/bench.sh
 #
 # Split usage, which is what real runs should use. On the broker machine start
 # the server yourself for one arm at a time; on the load machine run:
 #
 #   BROKER=http://192.168.1.50:8081 SINK_ADVERTISE=http://192.168.1.60 \
-#   MANAGE_BROKER=0 ARMS=durable-sync REPS=10 ./e2e-tests/bench.sh
+#   MANAGE_BROKER=0 ARMS=durable-sync REPS=10 ./e2e-tests/scripts/bench.sh
 #
 # Tunables:
 #   ARMS REPS DURATION WARMUP RATE QUEUES PUBS_PER_QUEUE SUBS_PER_QUEUE
@@ -31,10 +31,11 @@
 #   MAX_SEG_SIZE CKPT_THRESHOLD
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_DIR="$(cd "$ROOT_DIR/.." && pwd)"
-BIN_DIR="$SCRIPT_DIR/bin"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # e2e-tests/scripts
+E2E_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"                    # e2e-tests — artifacts land here
+ROOT_DIR="$(cd "$E2E_DIR/.." && pwd)"                      # durable-mq — the go module root
+REPO_DIR="$(cd "$ROOT_DIR/.." && pwd)"                     # simonMQ — holds push-mq alongside
+BIN_DIR="$E2E_DIR/bin"
 
 ARMS="${ARMS:-push-mq durable-off durable-nosync durable-sync}"
 REPS="${REPS:-10}"
@@ -58,9 +59,9 @@ SINK_BASE_PORT="${SINK_BASE_PORT:-9090}"
 # 1: this script starts and stops the broker between arms. 0: the broker is
 # somewhere else and you restart it yourself between arms.
 MANAGE_BROKER="${MANAGE_BROKER:-1}"
-OUT_DIR="${OUT_DIR:-$SCRIPT_DIR/results}"
+OUT_DIR="${OUT_DIR:-$E2E_DIR/results}"
 
-WAL_DIR="$SCRIPT_DIR/bench-wal"
+WAL_DIR="$E2E_DIR/bench-wal"
 SINK_URL="$SINK_ADVERTISE:$SINK_BASE_PORT"
 
 broker_pid=""
@@ -115,7 +116,7 @@ start_broker() {
 
     case "$arm" in
         push-mq)
-            "$BIN_DIR/push-mq" >"$SCRIPT_DIR/broker.log" 2>&1 &
+            "$BIN_DIR/push-mq" >"$E2E_DIR/broker.log" 2>&1 &
             ;;
         durable-off|durable-nosync|durable-sync)
             local mode="${arm#durable-}"
@@ -127,14 +128,14 @@ start_broker() {
             # unbound variable, and empty is the default path here.
             "$BIN_DIR/durable-mq" -port 8081 -wal-dir "$WAL_DIR" -wal-mode "$mode" \
                 ${extra[@]+"${extra[@]}"} \
-                >"$SCRIPT_DIR/broker.log" 2>&1 &
+                >"$E2E_DIR/broker.log" 2>&1 &
             ;;
         *)
             die "unknown arm: $arm"
             ;;
     esac
     broker_pid=$!
-    wait_port "$BROKER/queues" || die "broker for arm $arm never came up; see $SCRIPT_DIR/broker.log"
+    wait_port "$BROKER/queues" || die "broker for arm $arm never came up; see $E2E_DIR/broker.log"
 }
 
 # await_remote_broker handles the arm switch when the broker lives on another
@@ -180,9 +181,9 @@ main() {
     # One sink process serves every arm and repetition; loadgen zeroes its
     # counters at the start of each run.
     "$BIN_DIR/subscriber" -base-port "$SINK_BASE_PORT" -n "$SUBS_PER_QUEUE" -mode count \
-        >"$SCRIPT_DIR/sink.log" 2>&1 &
+        >"$E2E_DIR/sink.log" 2>&1 &
     sink_pid=$!
-    wait_port "http://localhost:$SINK_BASE_PORT/stats" || die "sink never came up; see $SCRIPT_DIR/sink.log"
+    wait_port "http://localhost:$SINK_BASE_PORT/stats" || die "sink never came up; see $E2E_DIR/sink.log"
 
     local total=$((REPS * $(wc -w <<<"$ARMS")))
     local n=0
@@ -207,13 +208,13 @@ main() {
                 -rate "$RATE" -payload "$PAYLOAD" \
                 -duration "$DURATION" -warmup "$WARMUP" \
                 -out "$OUT_DIR/${arm}-${rep}.json" \
-                >"$SCRIPT_DIR/loadgen.log" 2>&1
+                >"$E2E_DIR/loadgen.log" 2>&1
             local rc=$?
             stop_broker
 
             if [[ $rc -ne 0 ]]; then
-                echo "FAILED (see $SCRIPT_DIR/loadgen.log)"
-                tail -3 "$SCRIPT_DIR/loadgen.log" >&2
+                echo "FAILED (see $E2E_DIR/loadgen.log)"
+                tail -3 "$E2E_DIR/loadgen.log" >&2
             else
                 echo "ok"
             fi

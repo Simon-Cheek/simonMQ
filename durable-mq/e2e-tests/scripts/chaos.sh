@@ -8,13 +8,14 @@
 # whole point, recovering from whatever was on disk when it got killed.
 #
 # Override defaults via env vars, e.g.:
-#   MIN_UP=5 MAX_UP=30 ./e2e-tests/chaos.sh
+#   MIN_UP=5 MAX_UP=30 ./e2e-tests/scripts/chaos.sh
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BIN_PATH="$SCRIPT_DIR/durable-mq-server"
-SERVER_LOG="$SCRIPT_DIR/chaos-server.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # e2e-tests/scripts
+E2E_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"                    # e2e-tests — binary and log land here
+ROOT_DIR="$(cd "$E2E_DIR/.." && pwd)"                      # durable-mq — the go module root
+BIN_PATH="$E2E_DIR/durable-mq-server"
+SERVER_LOG="$E2E_DIR/chaos-server.log"
 
 MIN_UP="${MIN_UP:-1}"
 MAX_UP="${MAX_UP:-20}"
