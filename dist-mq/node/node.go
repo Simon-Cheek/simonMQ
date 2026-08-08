@@ -50,9 +50,9 @@ type Config struct {
 
 // Node owns the raft handle and is the only place the raft API is touched.
 type Node struct {
-	raft   *raft.Raft
-	store  storage.Storage
-	boltDB *raftboltdb.BoltStore
+	raft       *raft.Raft
+	appStorage storage.Storage
+	boltDB     *raftboltdb.BoltStore
 }
 
 func New(cfg Config, store storage.Storage) (*Node, error) {
@@ -104,7 +104,7 @@ func New(cfg Config, store storage.Storage) (*Node, error) {
 		}
 	}
 
-	return &Node{raft: ra, store: store, boltDB: boltDB}, nil
+	return &Node{raft: ra, appStorage: store, boltDB: boltDB}, nil
 }
 
 func newTransport(cfg Config) (raft.Transport, error) {
@@ -127,6 +127,8 @@ func newTransport(cfg Config) (raft.Transport, error) {
 // boltDB backs both the log and the stable store; logs is a cache in front of
 // it so replication does not hit disk for recent entries.
 func newStores(cfg Config) (snapshots raft.SnapshotStore, logs raft.LogStore, boltDB *raftboltdb.BoltStore, err error) {
+
+	// Verify Directory for Raft File Storage
 	if cfg.Dir == "" {
 		return nil, nil, nil, errors.New("node: empty Dir")
 	}
@@ -134,16 +136,19 @@ func newStores(cfg Config) (snapshots raft.SnapshotStore, logs raft.LogStore, bo
 		return nil, nil, nil, fmt.Errorf("node: create raft dir: %w", err)
 	}
 
+	// Create FileSnapshot Storage
 	snapshots, err = raft.NewFileSnapshotStore(cfg.Dir, retainSnapshotCount, cfg.LogOutput)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("node: file snapshot store: %w", err)
 	}
 
+	// Create BoltDB Instance for Log Storage
 	boltDB, err = raftboltdb.New(raftboltdb.Options{Path: filepath.Join(cfg.Dir, "raft.db")})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("node: bolt store: %w", err)
 	}
 
+	// Create Log Cache using BoltDB
 	logs, err = raft.NewLogCache(logCacheSize, boltDB)
 	if err != nil {
 		_ = boltDB.Close()
@@ -263,7 +268,7 @@ func (n *Node) LeaderCh() <-chan bool {
 }
 
 func (n *Node) Store() storage.Storage {
-	return n.store
+	return n.appStorage
 }
 
 func (n *Node) Stats() map[string]string {
@@ -278,7 +283,7 @@ func (n *Node) Shutdown() error {
 	if err := n.boltDB.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("bolt close: %w", err))
 	}
-	if err := n.store.Close(); err != nil {
+	if err := n.appStorage.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("store close: %w", err))
 	}
 	return errors.Join(errs...)
