@@ -39,3 +39,10 @@ Pub/Sub model identical in functionality to Push-MQ with one core distinction: d
 - Much more detailed documentation can be found within `/durable-mq/DurableMQDesign.md`
 - WAL implementation info can be found in `/durable-mq/WalDesign.md`
 - Performance tests comparing `push-mq` and `durable-mq` can be found in `/durable-mq/Performance.md`
+
+## Dist-MQ
+Pub/Sub model identical in functionality to Push-MQ with some changes to the infrastructure.
+Multiple instances of `Dist-MQ` are created and exist as a quorum for durability and availability.
+Implemented using Raft.
+- Persists logs and state snapshots using bolt-db
+- Will redirect publishers to the leader node if the publisher attempts to contact a follower node
