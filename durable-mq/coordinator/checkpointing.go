@@ -146,10 +146,6 @@ func CompactRecords(recs []*record.Record) []*record.Record {
 	return s.compacted()
 }
 
-// applyDeleteQueue drops the queue's own state and every message addressed to
-// it. Dropping the messages matters: ReplayLog calls DeleteQueueMessages on
-// DELETE_QUEUE, so keeping them here would let a message outlive its queue and
-// be redelivered if a queue of the same name were later recreated.
 func (s *compactionState) applyDeleteQueue(rec *record.Record) {
 	qName := rec.QueueName
 	delete(s.createdQueues, qName)

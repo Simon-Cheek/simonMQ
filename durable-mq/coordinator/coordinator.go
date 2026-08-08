@@ -28,8 +28,7 @@ const walDirectory = "durable-wal"
 const maxLogSize = 16 * 8 * 1024 * 1024 // 128MB
 
 // Config tunes the durable layer. The zero value is the production
-// configuration — a fully durable, fsync-per-append WAL in ./durable-wal —
-// so anything weaker has to be asked for by name.
+// configuration — a fully durable, fsync-per-append WAL
 type Config struct {
 	Dir        string   // WAL directory; empty means walDirectory
 	MaxSegSize int64    // segment roll threshold; 0 means maxLogSize
