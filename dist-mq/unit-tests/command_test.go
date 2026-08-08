@@ -51,12 +51,43 @@ func TestDeleteSubPolicyRoundTrip(t *testing.T) {
 }
 
 func TestEnqueueRoundTrip(t *testing.T) {
-	got := roundTrip(t, command.NewEnqueue("orders", "orders-abc123", "hello"))
+	subs := map[string]model.SubPolicy{
+		"billing": {SubName: "billing", SubURL: "http://billing:9000", NumberOfRetries: 5},
+		"audit":   {SubName: "audit", SubURL: "http://audit:9000", NumberOfRetries: 2},
+	}
+	got := roundTrip(t, command.NewEnqueue("orders", "orders-abc123", "hello", subs))
 	if got.MsgID != "orders-abc123" {
 		t.Fatalf("msg id = %q, want %q", got.MsgID, "orders-abc123")
 	}
 	if got.Payload != "hello" {
 		t.Fatalf("payload = %q, want %q", got.Payload, "hello")
+	}
+	if len(got.SubList) != len(subs) {
+		t.Fatalf("sub list = %v, want %v", got.SubList, subs)
+	}
+	for name, want := range subs {
+		if got.SubList[name] != want {
+			t.Fatalf("sub %q = %+v, want %+v", name, got.SubList[name], want)
+		}
+	}
+}
+
+// A queue with no subscribers still enqueues; the message is simply owed to
+// nobody, and storage drops it rather than leaving it pending forever.
+func TestEnqueueWithEmptySubListRoundTrips(t *testing.T) {
+	got := roundTrip(t, command.NewEnqueue("orders", "m1", "hello", nil))
+	if len(got.SubList) != 0 {
+		t.Fatalf("sub list = %v, want empty", got.SubList)
+	}
+}
+
+func TestNewEnqueueCopiesSubList(t *testing.T) {
+	subs := map[string]model.SubPolicy{"billing": {SubName: "billing"}}
+	cmd := command.NewEnqueue("orders", "m1", "hello", subs)
+	subs["injected"] = model.SubPolicy{SubName: "injected"}
+
+	if _, ok := cmd.SubList["injected"]; ok {
+		t.Fatalf("SubList aliased the caller's map: %v", cmd.SubList)
 	}
 }
 
@@ -93,7 +124,7 @@ func TestEnqueuePayloadSurvivesAwkwardContent(t *testing.T) {
 		strings.Repeat("x", 64*1024),
 	}
 	for _, payload := range payloads {
-		got := roundTrip(t, command.NewEnqueue("orders", "m1", payload))
+		got := roundTrip(t, command.NewEnqueue("orders", "m1", payload, nil))
 		if got.Payload != payload {
 			t.Fatalf("payload round trip failed for %.40q", payload)
 		}
@@ -108,7 +139,7 @@ func TestUnusedFieldsAreOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode returned error: %v", err)
 	}
-	for _, field := range []string{"MsgId", "Payload", "SubName", "SubNames", "Policy"} {
+	for _, field := range []string{"MsgId", "Payload", "SubName", "SubNames", "SubList", "Policy"} {
 		if strings.Contains(string(data), field) {
 			t.Fatalf("CreateQueue entry carries unused field %q: %s", field, data)
 		}
@@ -150,8 +181,8 @@ func TestEncodeRejectsMalformedCommands(t *testing.T) {
 	}{
 		{"zero value", command.Command{}},
 		{"unknown type", command.Command{Type: command.Type(42), QueueName: "orders"}},
-		{"empty queue name", command.NewEnqueue("", "m1", "hi")},
-		{"empty msg id", command.NewEnqueue("orders", "", "hi")},
+		{"empty queue name", command.NewEnqueue("", "m1", "hi", nil)},
+		{"empty msg id", command.NewEnqueue("orders", "", "hi", nil)},
 		{"empty sub name", command.NewDeleteSubPolicy("orders", "")},
 		{"policy without name", command.NewPutSubPolicy("orders", model.SubPolicy{SubURL: "http://x"})},
 	}

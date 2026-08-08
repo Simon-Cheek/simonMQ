@@ -40,13 +40,14 @@ func (t Type) String() string {
 // Command is one entry in the replicated log — the serialized form of a single
 // storage mutation
 type Command struct {
-	Type      Type            `json:"Type"`
-	QueueName string          `json:"QueueName"`
-	MsgID     string          `json:"MsgId,omitempty"`
-	Payload   string          `json:"Payload,omitempty"`
-	SubName   string          `json:"SubName,omitempty"`
-	Policy    model.SubPolicy `json:"Policy,omitzero"`
-	SubNames  []string        `json:"SubNames,omitempty"`
+	Type      Type                       `json:"Type"`
+	QueueName string                     `json:"QueueName"`
+	MsgID     string                     `json:"MsgId,omitempty"`
+	Payload   string                     `json:"Payload,omitempty"`
+	SubName   string                     `json:"SubName,omitempty"`
+	Policy    model.SubPolicy            `json:"Policy,omitzero"`
+	SubNames  []string                   `json:"SubNames,omitempty"`
+	SubList   map[string]model.SubPolicy `json:"SubList,omitempty"`
 }
 
 func NewCreateQueue(queueName string) Command {
@@ -65,8 +66,18 @@ func NewDeleteSubPolicy(queueName, subName string) Command {
 	return Command{Type: DeleteSubPolicy, QueueName: queueName, SubName: subName}
 }
 
-func NewEnqueue(queueName, msgID, payload string) Command {
-	return Command{Type: Enqueue, QueueName: queueName, MsgID: msgID, Payload: payload}
+func NewEnqueue(queueName, msgID, payload string, subList map[string]model.SubPolicy) Command {
+	subs := make(map[string]model.SubPolicy, len(subList))
+	for name, policy := range subList {
+		subs[name] = policy
+	}
+	return Command{
+		Type:      Enqueue,
+		QueueName: queueName,
+		MsgID:     msgID,
+		Payload:   payload,
+		SubList:   subs,
+	}
 }
 
 func NewAck(queueName, msgID string, subNames []string) Command {

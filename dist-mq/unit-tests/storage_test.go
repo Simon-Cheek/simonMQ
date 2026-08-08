@@ -27,9 +27,12 @@ func addSub(t *testing.T, s *storage.InMemoryStorage, queueName, subName string)
 	}
 }
 
+// Mirrors the real call path: the leader reads the sub list, then that list
+// travels in the command and arrives back here as a parameter.
 func mustEnqueue(t *testing.T, s *storage.InMemoryStorage, queueName, msgID, payload string) model.MessageInfo {
 	t.Helper()
-	msg, err := s.Enqueue(queueName, msgID, payload)
+	subs, _ := s.FetchSubList(queueName)
+	msg, err := s.Enqueue(queueName, msgID, payload, subs)
 	if err != nil {
 		t.Fatalf("Enqueue(%q, %q) returned error: %v", queueName, msgID, err)
 	}
@@ -92,8 +95,41 @@ func TestDeleteQueueRemovesMessagesAndSubs(t *testing.T) {
 
 func TestEnqueueUnknownQueue(t *testing.T) {
 	s := newStore(t)
-	if _, err := s.Enqueue("nope", "m1", "hello"); !errors.Is(err, storage.ErrQueueNotFound) {
+	if _, err := s.Enqueue("nope", "m1", "hello", nil); !errors.Is(err, storage.ErrQueueNotFound) {
 		t.Fatalf("Enqueue to unknown queue: got %v, want ErrQueueNotFound", err)
+	}
+}
+
+// The list in the command wins over whatever this node currently holds, so a
+// node whose sub state has drifted still stores the same subscribers as
+// everyone else.
+func TestEnqueueUsesSuppliedSubListNotLocalState(t *testing.T) {
+	s := newStore(t, "orders")
+	addSub(t, s, "orders", "local-only")
+
+	supplied := map[string]model.SubPolicy{
+		"billing": {SubName: "billing", SubURL: "http://billing", NumberOfRetries: 3},
+	}
+	msg, err := s.Enqueue("orders", "m1", "hello", supplied)
+	if err != nil {
+		t.Fatalf("Enqueue returned error: %v", err)
+	}
+
+	if _, ok := msg.SubList["local-only"]; ok {
+		t.Fatal("local sub state leaked into the message")
+	}
+	if _, ok := msg.SubList["billing"]; !ok {
+		t.Fatalf("supplied sub list was not used: %v", msg.SubList)
+	}
+
+	// Mutating the caller's map must not reach into stored state.
+	supplied["injected"] = model.SubPolicy{SubName: "injected"}
+	stored, err := s.PendingMessages("orders")
+	if err != nil {
+		t.Fatalf("PendingMessages returned error: %v", err)
+	}
+	if _, ok := stored[0].SubList["injected"]; ok {
+		t.Fatal("stored message aliased the caller's sub list")
 	}
 }
 

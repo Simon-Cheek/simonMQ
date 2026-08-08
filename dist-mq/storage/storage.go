@@ -22,7 +22,7 @@ type Storage interface {
 	DeleteQueue(name string) error
 	PutSubPolicy(queueName string, policy model.SubPolicy) error
 	DeleteSubPolicy(queueName, subName string) error
-	Enqueue(queueName, msgID, payload string) (model.MessageInfo, error)
+	Enqueue(queueName, msgID, payload string, subList map[string]model.SubPolicy) (model.MessageInfo, error)
 	Ack(queueName, msgID string, subNames []string) error
 
 	// Reads. Servable by any node at any time, leader or follower. Not linearizable

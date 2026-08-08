@@ -93,7 +93,7 @@ func (s *InMemoryStorage) DeleteSubPolicy(queueName, subName string) error {
 	return nil
 }
 
-func (s *InMemoryStorage) Enqueue(queueName, msgID, payload string) (model.MessageInfo, error) {
+func (s *InMemoryStorage) Enqueue(queueName, msgID, payload string, subList map[string]model.SubPolicy) (model.MessageInfo, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -105,11 +105,13 @@ func (s *InMemoryStorage) Enqueue(queueName, msgID, payload string) (model.Messa
 		return toMessageInfo(existing), nil
 	}
 
+	// The caller's list is authoritative, not q.subs — every node must land on
+	// the same subscribers for this message regardless of its own sub state.
 	msg := &messageState{
 		seq:       s.nextSeq,
 		msgID:     msgID,
 		payload:   payload,
-		subList:   copySubs(q.subs),
+		subList:   copySubs(subList),
 		ackedSubs: make(map[string]struct{}),
 	}
 	s.nextSeq++
