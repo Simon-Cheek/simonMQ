@@ -10,8 +10,8 @@ import (
 
 const defaultReconcileInterval = 30 * time.Second
 
-// Cluster is what delivery needs from the raft layer. Declared here rather than
-// importing node so the lifecycle can be tested against a fake.
+// Cluster is what delivery needs from the raft layer
+// Defined as an interface for testability
 type Cluster interface {
 	LeaderCh() <-chan bool
 	Barrier(timeout time.Duration) error
@@ -24,12 +24,12 @@ type Cluster interface {
 type Manager struct {
 	cluster  Cluster
 	store    storage.Storage
-	interval time.Duration
+	interval time.Duration // Duration in which FSM is swept for orphaned messages
 
-	mu     sync.Mutex
-	queues map[string]*Queue
-	known  map[string]struct{} // msgIDs already scheduled, deduping the two feeds
-	stopCh chan struct{}       // closed on demotion; nil when not running
+	mu           sync.Mutex
+	queues       map[string]*Queue
+	inFlightMsgs map[string]struct{} // msgIDs already scheduled, deduping the two feeds
+	stopCh       chan struct{}       // closed on demotion; nil when not running
 }
 
 func NewManager(cluster Cluster, store storage.Storage, interval time.Duration) *Manager {
@@ -37,11 +37,11 @@ func NewManager(cluster Cluster, store storage.Storage, interval time.Duration) 
 		interval = defaultReconcileInterval
 	}
 	return &Manager{
-		cluster:  cluster,
-		store:    store,
-		interval: interval,
-		queues:   make(map[string]*Queue),
-		known:    make(map[string]struct{}),
+		cluster:      cluster,
+		store:        store,
+		interval:     interval,
+		queues:       make(map[string]*Queue),
+		inFlightMsgs: make(map[string]struct{}),
 	}
 }
 
