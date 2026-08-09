@@ -21,6 +21,7 @@ type subscriber struct {
 	bodies  []string
 	paths   []string
 	failAll bool
+	hold    chan struct{} // when set, handlers block until released
 }
 
 func newSubscriber(t *testing.T) *subscriber {
@@ -33,8 +34,12 @@ func newSubscriber(t *testing.T) *subscriber {
 		s.bodies = append(s.bodies, string(body))
 		s.paths = append(s.paths, r.URL.Path)
 		fail := s.failAll
+		hold := s.hold
 		s.mu.Unlock()
 
+		if hold != nil {
+			<-hold
+		}
 		if fail {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -43,6 +48,22 @@ func newSubscriber(t *testing.T) *subscriber {
 	}))
 	t.Cleanup(s.server.Close)
 	return s
+}
+
+func (s *subscriber) holdRequests() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hold = make(chan struct{})
+}
+
+func (s *subscriber) release() {
+	s.mu.Lock()
+	held := s.hold
+	s.hold = nil
+	s.mu.Unlock()
+	if held != nil {
+		close(held)
+	}
 }
 
 func (s *subscriber) alwaysFail() {
