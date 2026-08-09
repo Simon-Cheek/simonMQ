@@ -14,7 +14,7 @@ import (
 
 const (
 	deliveryTimeout     = 10 * time.Second
-	deliveryPath        = "/queue/message"
+	DeliveryPath        = "/queue/message"
 	maxIdleConnsPerHost = 64
 )
 
@@ -23,7 +23,7 @@ type deliveryResult struct {
 	ok      bool
 }
 
-type worker struct {
+type Worker struct {
 	queue  *Queue
 	stopCh <-chan struct{}
 	client *http.Client
@@ -39,12 +39,12 @@ func NewDeliveryClient() *http.Client {
 	return &http.Client{Transport: transport, Timeout: deliveryTimeout}
 }
 
-func newWorker(q *Queue, stopCh <-chan struct{}, client *http.Client,
-	onAck func(msgID string, subNames []string) error, onDone func(msgID string)) *worker {
-	return &worker{queue: q, stopCh: stopCh, client: client, onAck: onAck, onDone: onDone}
+func NewWorker(q *Queue, stopCh <-chan struct{}, client *http.Client,
+	onAck func(msgID string, subNames []string) error, onDone func(msgID string)) *Worker {
+	return &Worker{queue: q, stopCh: stopCh, client: client, onAck: onAck, onDone: onDone}
 }
 
-func (w *worker) run() {
+func (w *Worker) Run() {
 	for {
 		for {
 			// Checked per message so a demotion mid-backlog stops promptly
@@ -56,7 +56,7 @@ func (w *worker) run() {
 			if msg == nil {
 				break
 			}
-			w.process(msg)
+			w.Process(msg)
 		}
 
 		select {
@@ -67,7 +67,7 @@ func (w *worker) run() {
 	}
 }
 
-func (w *worker) stopped() bool {
+func (w *Worker) stopped() bool {
 	select {
 	case <-w.stopCh:
 		return true
@@ -76,7 +76,7 @@ func (w *worker) stopped() bool {
 	}
 }
 
-func (w *worker) process(msg *QueueMsg) {
+func (w *Worker) Process(msg *QueueMsg) {
 	pending := msg.PendingSubs()
 	if len(pending) == 0 {
 		w.onDone(msg.MsgID)
@@ -132,12 +132,12 @@ func (w *worker) process(msg *QueueMsg) {
 	w.queue.Add(msg)
 }
 
-func (w *worker) send(sub model.SubPolicy, msg *QueueMsg) bool {
+func (w *Worker) send(sub model.SubPolicy, msg *QueueMsg) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), deliveryTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		sub.SubURL+deliveryPath, strings.NewReader(msg.Payload))
+		sub.SubURL+DeliveryPath, strings.NewReader(msg.Payload))
 	if err != nil {
 		return false
 	}

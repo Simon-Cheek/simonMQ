@@ -1,26 +1,26 @@
-package delivery
-
-// Internal test: worker and process are unexported, so this cannot live in
-// unit-tests alongside the rest.
+package unit_tests
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 
+	"dist-mq/delivery"
 	"dist-mq/model"
 )
+
+var errProposeFailed = errors.New("propose failed")
 
 type subscriber struct {
 	server *httptest.Server
 
-	mu       sync.Mutex
-	bodies   []string
-	paths    []string
-	failNext int  // number of upcoming requests to fail
-	failAll  bool // fail everything
+	mu      sync.Mutex
+	bodies  []string
+	paths   []string
+	failAll bool
 }
 
 func newSubscriber(t *testing.T) *subscriber {
@@ -32,10 +32,7 @@ func newSubscriber(t *testing.T) *subscriber {
 		s.mu.Lock()
 		s.bodies = append(s.bodies, string(body))
 		s.paths = append(s.paths, r.URL.Path)
-		fail := s.failAll || s.failNext > 0
-		if s.failNext > 0 {
-			s.failNext--
-		}
+		fail := s.failAll
 		s.mu.Unlock()
 
 		if fail {
@@ -46,6 +43,12 @@ func newSubscriber(t *testing.T) *subscriber {
 	}))
 	t.Cleanup(s.server.Close)
 	return s
+}
+
+func (s *subscriber) alwaysFail() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failAll = true
 }
 
 func (s *subscriber) calls() int {
@@ -83,22 +86,22 @@ func (r *recorder) onDone(msgID string) {
 	r.done = append(r.done, msgID)
 }
 
-func newTestWorker(t *testing.T, stopCh <-chan struct{}) (*worker, *Queue, *recorder) {
+func newTestWorker(t *testing.T, stopCh <-chan struct{}) (*delivery.Worker, *delivery.Queue, *recorder) {
 	t.Helper()
 	if stopCh == nil {
 		stopCh = make(chan struct{})
 	}
-	q := NewQueue("orders")
+	q := delivery.NewQueue("orders")
 	rec := &recorder{}
-	return newWorker(q, stopCh, NewDeliveryClient(), rec.onAck, rec.onDone), q, rec
+	return delivery.NewWorker(q, stopCh, delivery.NewDeliveryClient(), rec.onAck, rec.onDone), q, rec
 }
 
-func testMsg(subs ...model.SubPolicy) *QueueMsg {
+func testMsg(subs ...model.SubPolicy) *delivery.QueueMsg {
 	list := make(map[string]model.SubPolicy, len(subs))
 	for _, s := range subs {
 		list[s.SubName] = s
 	}
-	return NewQueueMsg(model.MessageInfo{MsgID: "m1", Payload: "hello", SubList: list})
+	return delivery.NewQueueMsg(model.MessageInfo{MsgID: "m1", Payload: "hello", SubList: list})
 }
 
 // One pass over N subscribers produces exactly one Ack command, not N.
@@ -106,7 +109,7 @@ func TestProcessBatchesAcksIntoOneCommand(t *testing.T) {
 	billing, audit := newSubscriber(t), newSubscriber(t)
 	w, q, rec := newTestWorker(t, nil)
 
-	w.process(testMsg(billing.policy("billing", 3), audit.policy("audit", 3)))
+	w.Process(testMsg(billing.policy("billing", 3), audit.policy("audit", 3)))
 
 	if len(rec.acks) != 1 {
 		t.Fatalf("got %d ack commands, want 1: %v", len(rec.acks), rec.acks)
@@ -126,15 +129,15 @@ func TestProcessDeliversPayloadToSubscriberPath(t *testing.T) {
 	billing := newSubscriber(t)
 	w, _, _ := newTestWorker(t, nil)
 
-	w.process(testMsg(billing.policy("billing", 3)))
+	w.Process(testMsg(billing.policy("billing", 3)))
 
 	billing.mu.Lock()
 	defer billing.mu.Unlock()
 	if len(billing.bodies) != 1 || billing.bodies[0] != "hello" {
 		t.Fatalf("delivered bodies = %v, want [hello]", billing.bodies)
 	}
-	if billing.paths[0] != deliveryPath {
-		t.Fatalf("delivered to %q, want %q", billing.paths[0], deliveryPath)
+	if billing.paths[0] != delivery.DeliveryPath {
+		t.Fatalf("delivered to %q, want %q", billing.paths[0], delivery.DeliveryPath)
 	}
 }
 
@@ -142,13 +145,10 @@ func TestProcessDeliversPayloadToSubscriberPath(t *testing.T) {
 // back on the queue so the next pass retries only that subscriber.
 func TestProcessRequeuesWhenASubscriberFails(t *testing.T) {
 	billing, audit := newSubscriber(t), newSubscriber(t)
-	audit.mu.Lock()
-	audit.failAll = true
-	audit.mu.Unlock()
+	audit.alwaysFail()
 
 	w, q, rec := newTestWorker(t, nil)
-	msg := testMsg(billing.policy("billing", 3), audit.policy("audit", 3))
-	w.process(msg)
+	w.Process(testMsg(billing.policy("billing", 3), audit.policy("audit", 3)))
 
 	if len(rec.acks) != 1 || len(rec.acks[0]) != 1 || rec.acks[0][0] != "billing" {
 		t.Fatalf("ack batch = %v, want [billing] only", rec.acks)
@@ -161,7 +161,7 @@ func TestProcessRequeuesWhenASubscriberFails(t *testing.T) {
 	}
 
 	// Second pass must skip the subscriber that already acked.
-	w.process(q.Pop())
+	w.Process(q.Pop())
 	if billing.calls() != 1 {
 		t.Fatalf("billing was delivered %d times, want 1", billing.calls())
 	}
@@ -170,14 +170,11 @@ func TestProcessRequeuesWhenASubscriberFails(t *testing.T) {
 // Exhausting retries is also "stop delivering", so it rides the same command.
 func TestProcessAcksSubscriberThatRanOutOfRetries(t *testing.T) {
 	audit := newSubscriber(t)
-	audit.mu.Lock()
-	audit.failAll = true
-	audit.mu.Unlock()
+	audit.alwaysFail()
 
 	w, q, rec := newTestWorker(t, nil)
-	msg := testMsg(audit.policy("audit", 2))
 
-	w.process(msg)
+	w.Process(testMsg(audit.policy("audit", 2)))
 	if len(rec.acks) != 0 {
 		t.Fatalf("acked before retries were exhausted: %v", rec.acks)
 	}
@@ -185,7 +182,7 @@ func TestProcessAcksSubscriberThatRanOutOfRetries(t *testing.T) {
 		t.Fatal("message not requeued after first failure")
 	}
 
-	w.process(q.Pop())
+	w.Process(q.Pop())
 	if len(rec.acks) != 1 || rec.acks[0][0] != "audit" {
 		t.Fatalf("ack batch after exhausting retries = %v, want [audit]", rec.acks)
 	}
@@ -201,12 +198,10 @@ func TestProcessAcksSubscriberThatRanOutOfRetries(t *testing.T) {
 // no-op on every node.
 func TestProcessProposesNothingWhenNoSubscriberFinished(t *testing.T) {
 	audit := newSubscriber(t)
-	audit.mu.Lock()
-	audit.failAll = true
-	audit.mu.Unlock()
+	audit.alwaysFail()
 
 	w, q, rec := newTestWorker(t, nil)
-	w.process(testMsg(audit.policy("audit", 5)))
+	w.Process(testMsg(audit.policy("audit", 5)))
 
 	if len(rec.acks) != 0 {
 		t.Fatalf("proposed an ack with no finished subscribers: %v", rec.acks)
@@ -223,7 +218,7 @@ func TestProcessDoesNotMarkAcksWhenProposeFails(t *testing.T) {
 	rec.ackErr = errProposeFailed
 
 	msg := testMsg(billing.policy("billing", 3))
-	w.process(msg)
+	w.Process(msg)
 
 	if len(msg.AckedSubs) != 0 {
 		t.Fatalf("marked acks in memory despite a failed propose: %v", msg.AckedSubs)
@@ -245,7 +240,7 @@ func TestProcessDiscardsResultsAfterDemotion(t *testing.T) {
 	w, _, rec := newTestWorker(t, stopCh)
 
 	close(stopCh)
-	w.process(testMsg(billing.policy("billing", 3)))
+	w.Process(testMsg(billing.policy("billing", 3)))
 
 	if len(rec.acks) != 0 {
 		t.Fatalf("proposed an ack after demotion: %v", rec.acks)
@@ -255,13 +250,13 @@ func TestProcessDiscardsResultsAfterDemotion(t *testing.T) {
 	}
 }
 
-func TestRunExitsOnStop(t *testing.T) {
+func TestWorkerRunExitsOnStop(t *testing.T) {
 	stopCh := make(chan struct{})
 	w, _, _ := newTestWorker(t, stopCh)
 
 	exited := make(chan struct{})
 	go func() {
-		w.run()
+		w.Run()
 		close(exited)
 	}()
 
@@ -270,21 +265,19 @@ func TestRunExitsOnStop(t *testing.T) {
 }
 
 // A backlog must not have to drain before the worker notices demotion.
-func TestRunStopsMidBacklog(t *testing.T) {
+func TestWorkerRunStopsMidBacklog(t *testing.T) {
 	billing := newSubscriber(t)
 	stopCh := make(chan struct{})
 	w, q, _ := newTestWorker(t, stopCh)
 
-	for i := range 200 {
-		msg := testMsg(billing.policy("billing", 3))
-		msg.MsgID = string(rune('a' + i%26))
-		q.Add(msg)
+	for range 200 {
+		q.Add(testMsg(billing.policy("billing", 3)))
 	}
 	close(stopCh)
 
 	exited := make(chan struct{})
 	go func() {
-		w.run()
+		w.Run()
 		close(exited)
 	}()
 	<-exited
@@ -293,9 +286,3 @@ func TestRunStopsMidBacklog(t *testing.T) {
 		t.Fatalf("delivered %d messages after demotion, want 0", billing.calls())
 	}
 }
-
-var errProposeFailed = &proposeError{}
-
-type proposeError struct{}
-
-func (e *proposeError) Error() string { return "propose failed" }

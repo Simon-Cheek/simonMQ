@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"net/http"
 	"sync"
 	"time"
 
@@ -25,6 +26,7 @@ type Manager struct {
 	cluster  Cluster
 	store    storage.Storage
 	interval time.Duration // Duration in which FSM is swept for orphaned messages
+	client   *http.Client  // shared by every worker so subscriber connections pool
 
 	mu           sync.Mutex
 	queues       map[string]*Queue
@@ -40,6 +42,7 @@ func NewManager(cluster Cluster, store storage.Storage, interval time.Duration) 
 		cluster:      cluster,
 		store:        store,
 		interval:     interval,
+		client:       NewDeliveryClient(),
 		queues:       make(map[string]*Queue),
 		inFlightMsgs: make(map[string]struct{}),
 	}
@@ -60,8 +63,8 @@ func (m *Manager) demote() {}
 
 func (m *Manager) sweep() {}
 
-func (m *Manager) reconcileLoop() {}
+func (m *Manager) reconcileLoop(stopCh <-chan struct{}) {}
 
 func (m *Manager) forget(msgId string) {}
 
-func (m *Manager) queueFor(queueName string) *Queue {}
+func (m *Manager) queueFor(queueName string) *Queue { return nil }
