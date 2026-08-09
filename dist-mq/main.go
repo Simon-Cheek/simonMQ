@@ -3,13 +3,16 @@ package main
 import (
 	"dist-mq/delivery"
 	"dist-mq/node"
+	"dist-mq/server"
 	"dist-mq/storage"
 	"log"
+	"net/http"
 )
 
 func main() {
 
 	// Instantiate Dependencies
+	// Node satisfies interfaces required by Manager and Server
 	store := storage.NewInMemoryStorage() // In Memory FSM
 	nCfg := node.Config{
 		ID:            "ID",
@@ -27,4 +30,13 @@ func main() {
 	}
 
 	mgr := delivery.NewManager(n, store, 0) // Default reconcile interval
+	serv := server.NewServer(n, store, mgr, server.Config{
+		PeerHTTP: nil, // TODO: Fix?
+	})
+
+	go mgr.Run()
+	err = http.ListenAndServe(":9000", serv.Routes())
+	if err != nil {
+		log.Fatal(err)
+	}
 }

@@ -64,9 +64,7 @@ func NewServer(cluster Cluster, state StateReader, scheduler Scheduler, cfg Conf
 	}
 }
 
-// Routes mirrors durable-mq's paths so the existing e2e harness works against a
-// cluster unchanged apart from following redirects. Reads are unwrapped and
-// answerable by any node; every mutation requires the leader.
+// Routes encapsulates the handling of routes within server.go
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
