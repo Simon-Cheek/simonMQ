@@ -28,7 +28,7 @@ type Manager struct {
 
 	mu           sync.Mutex
 	queues       map[string]*Queue
-	inFlightMsgs map[string]struct{} // msgIDs already scheduled, deduping the two feeds
+	inFlightMsgs map[string]struct{} // msgIDs already scheduled
 	stopCh       chan struct{}       // closed on demotion; nil when not running
 }
 
@@ -53,3 +53,15 @@ func (m *Manager) Schedule(queueName string, msg model.MessageInfo) {}
 
 // Stop gracefully shuts down queue operations after demotion
 func (m *Manager) Stop() {}
+
+func (m *Manager) promote() {}
+
+func (m *Manager) demote() {}
+
+func (m *Manager) sweep() {}
+
+func (m *Manager) reconcileLoop() {}
+
+func (m *Manager) forget(msgId string) {}
+
+func (m *Manager) queueFor(queueName string) *Queue {}
