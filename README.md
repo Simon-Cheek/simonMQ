@@ -41,8 +41,17 @@ Pub/Sub model identical in functionality to Push-MQ with one core distinction: d
 - Performance tests comparing `push-mq` and `durable-mq` can be found in `/durable-mq/Performance.md`
 
 ## Dist-MQ
-Pub/Sub model identical in functionality to Push-MQ with some changes to the infrastructure.
-Multiple instances of `Dist-MQ` are created and exist as a quorum for durability and availability.
-Implemented using Raft.
-- Persists logs and state snapshots using bolt-db
-- Will redirect publishers to the leader node if the publisher attempts to contact a follower node
+Pub/Sub model identical in functionality to Push-MQ, running as a cluster rather than a single process.
+Multiple instances of `Dist-MQ` form a quorum, replicating all state by consensus using Raft (`hashicorp/raft`).
+Where `durable-mq` survives a restart, `dist-mq` survives losing a machine outright.
+- Detailed documentation can be found within `/dist-mq/DistMQDesign.md`
+- Every state change is replicated to a majority of nodes before it takes effect
+  - A write is only acknowledged once it is durable on a quorum of disks
+  - Any minority of the cluster can be lost permanently without losing a message or taking the queue offline
+- Replicated log and Raft metadata persist to bolt-db; state snapshots persist as files
+  - Queue and subscriber state is held in memory and rebuilt from the log on startup
+- All writes require the leader node
+  - Followers redirect writes with a `421` carrying the leader's address, or a `503` while an election is in progress
+  - Queue state is readable from any node, though a follower may be slightly behind
+- Message delivery is leader-only, and is rebuilt from replicated state whenever leadership moves
+- Same at-least-once policy as Push-MQ, with duplicates additionally possible across a leadership change
