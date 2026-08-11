@@ -12,6 +12,7 @@ spec:
       args:
         - "-http-addr=0.0.0.0:8080"
         - "-raft-addr=0.0.0.0:9000"
+        - "-raft"
       ports:
         - name: dist-mq
           containerPort: 8080

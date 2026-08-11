@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -33,6 +35,16 @@ func main() {
 	reconcile := flag.Duration("reconcile", 0, "delivery reconcile sweep interval (0 uses the default)")
 	logLevel := flag.String("log-level", "INFO", "raft log level")
 	flag.Parse()
+
+	// K8s Override Config
+	if *raftAdvertise == "" {
+		_, raftP, err := net.SplitHostPort(*raftAddr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		podIp := os.Getenv("POD_IP") + ":" + raftP // Match Raft defined port
+		raftAdvertise = &podIp
+	}
 
 	peers, peerHTTP, err := parsePeers(*peerList)
 	if err != nil {
