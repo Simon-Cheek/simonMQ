@@ -9,10 +9,14 @@ spec:
     - name: dist-mq
       image: docker.io/library/dist-mq:local
       imagePullPolicy: IfNotPresent
+      env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
       args:
         - "-http-addr=0.0.0.0:8080"
         - "-raft-addr=0.0.0.0:9000"
-        - "-raft"
       ports:
         - name: dist-mq
           containerPort: 8080
