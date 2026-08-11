@@ -1,8 +1,3 @@
-FROM ubuntu:latest
-LABEL authors="simoncheek"
-
-ENTRYPOINT ["top", "-b"]
-
 # Stage 1: build
 FROM golang:1.25.4 AS builder
 WORKDIR /app
