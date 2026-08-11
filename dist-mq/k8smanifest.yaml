@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simon-distmq
+  labels:
+    role: simon-distmq
+spec:
+  containers:
+    - name: simon-distmq
+      image: docker.io/library/dist-mq:local
+      imagePullPolicy: IfNotPresent
+      args:
+        - "-http-addr=0.0.0.0:8080"
+        - "-raft-addr=0.0.0.0:9000"
+      ports:
+        - name: simon-distmq
+          containerPort: 8080
+          protocol: TCP
+        - name: simon-distmq-raft
+          containerPort: 9000
+          protocol: TCP
+  restartPolicy: Always
+  
