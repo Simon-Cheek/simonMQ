@@ -42,6 +42,10 @@ render() {
     out="${out//__MESSAGES__/$MESSAGES}"
     out="${out//__DRAIN_TIMEOUT__/$DRAIN_TIMEOUT}"
     out="${out//__TEST_TIMEOUT__/$TEST_TIMEOUT}"
+    # Durability needs the sink to remember tokens; bench.sh redeploys it in
+    # count mode, where retaining them would make the sink's allocator part of
+    # the measurement.
+    out="${out//__MODE__/record}"
 
     if leftover="$(grep -o '__[A-Z_]*__' <<<"$out" | sort -u)" && [[ -n "$leftover" ]]; then
         die "unsubstituted placeholder(s) in $file: $(tr '\n' ' ' <<<"$leftover")"

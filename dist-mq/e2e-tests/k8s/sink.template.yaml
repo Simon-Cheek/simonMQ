@@ -27,7 +27,7 @@ spec:
             - /app/sink
             - "-addr=:9090"
             - "-n=__SUBSCRIBERS__"
-            - "-mode=record"
+            - "-mode=__MODE__"
           ports:
             - name: http
               containerPort: 9090

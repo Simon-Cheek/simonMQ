@@ -1,0 +1,40 @@
+# Rendered by scripts/bench.sh, one Job per measurement.
+#
+# The load generator runs in-cluster so the redirect URLs a 421 hands back are
+# directly usable and the publish path is not measuring a port-forward.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dist-mq-bench
+  namespace: __NAMESPACE__
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: dist-mq-bench
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bench
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          command:
+            - /app/bench
+            - "-service=dist-mq-raft.__NAMESPACE__.svc.cluster.local"
+            - "-sink=http://dist-mq-sink.__NAMESPACE__.svc.cluster.local:9090"
+            - "-arm=__ARM__"
+            - "-rep=__REP__"
+            - "-queues=__QUEUES__"
+            - "-publishers-per-queue=__PUBS__"
+            - "-subscribers-per-queue=__SUBSCRIBERS__"
+            - "-rate=__RATE__"
+            - "-payload=__PAYLOAD__"
+            - "-duration=__DURATION__"
+            - "-warmup=__WARMUP__"
+          resources:
+            # The generator must not be the bottleneck. No CPU limit, and a
+            # request large enough that it is scheduled somewhere with room.
+            requests:
+              cpu: 500m
+              memory: 256Mi
