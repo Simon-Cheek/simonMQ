@@ -114,4 +114,3 @@ The redirect mapping is keyed by **server id**, not by Raft address. Raft report
 - **Commands are JSON-encoded**, which is readable in a log dump but larger on disk and on the wire than a binary framing. `durable-mq` has a byte-encoded version of records, which could be applied here.
 - **No idempotency keys.** A publisher that retries after an ambiguous failure produces a second message with a new ID. Accepting a client-supplied ID would make retries safe, since a repeated ID is already handled as a no-op.
 - **Batching is per-message.** Acks from one delivery pass share a command, but commands from separate messages are not coalesced. Batching across messages would cut consensus round trips further at the cost of latency and complexity.
-- **Kubernetes deployment** along with performance and durability tests.
