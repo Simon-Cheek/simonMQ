@@ -23,7 +23,7 @@ const (
 // Cluster is the write path: everything here goes through raft.
 type Cluster interface {
 	IsLeader() bool
-	LeaderAddress() (string, bool)
+	LeaderID() (string, bool)
 	CreateQueue(queueName string) error
 	DeleteQueue(queueName string) error
 	PutSubPolicy(queueName string, policy model.SubPolicy) error
@@ -43,7 +43,7 @@ type Scheduler interface {
 }
 
 type Config struct {
-	// PeerHTTP maps a raft transport address to that node's HTTP base URL.
+	// PeerHTTP maps a raft server id to that node's HTTP base URL.
 	// Raft only knows the former, and a client can only use the latter.
 	PeerHTTP map[string]string
 }
@@ -90,7 +90,7 @@ func (s *Server) requireLeader(next http.HandlerFunc) http.Handler {
 			return
 		}
 
-		raftAddr, ok := s.cluster.LeaderAddress()
+		leaderID, ok := s.cluster.LeaderID()
 		if !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 			http.Error(w, "no leader elected", http.StatusServiceUnavailable)
@@ -99,7 +99,7 @@ func (s *Server) requireLeader(next http.HandlerFunc) http.Handler {
 
 		// A leader exists but has no configured HTTP mapping: still worth a 421
 		// so the client moves on, just without somewhere specific to go.
-		if httpAddr, ok := s.peerHTTP[raftAddr]; ok {
+		if httpAddr, ok := s.peerHTTP[leaderID]; ok {
 			w.Header().Set(LeaderHeader, httpAddr)
 		}
 		http.Error(w, "not leader", http.StatusMisdirectedRequest)

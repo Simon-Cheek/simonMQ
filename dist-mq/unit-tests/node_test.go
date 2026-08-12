@@ -175,18 +175,17 @@ func TestStateSurvivesRestartViaLogReplay(t *testing.T) {
 	}
 }
 
-func TestLeaderAddressResolvesOnceElected(t *testing.T) {
+func TestLeaderIDResolvesOnceElected(t *testing.T) {
 	store := storage.NewInMemoryStorage()
-	bind := freePort(t)
-	n := startNode(t, t.TempDir(), bind, store)
+	n := startNode(t, t.TempDir(), freePort(t), store)
 	defer n.Shutdown()
 	awaitLeadership(t, n)
 
-	addr, ok := n.LeaderAddress()
+	id, ok := n.LeaderID()
 	if !ok {
-		t.Fatal("LeaderAddress reported no leader after election")
+		t.Fatal("LeaderID reported no leader after election")
 	}
-	if addr != bind {
-		t.Fatalf("leader address = %q, want %q", addr, bind)
+	if id != "node-0" {
+		t.Fatalf("leader id = %q, want %q", id, "node-0")
 	}
 }

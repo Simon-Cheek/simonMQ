@@ -1,0 +1,142 @@
+# Rendered by render.sh, which fills the double-underscored placeholders. Not
+# directly appliable — cluster size has to reach both the replica count and the
+# -peers list, so it is computed in one place rather than kept in sync by hand.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: __NAMESPACE__
+---
+# Headless: gives each pod a stable DNS name for raft to address it by.
+# publishNotReadyAddresses is load-bearing. Without it an unready pod is struck
+# from the endpoints and loses its DNS record, and since no pod is ready until
+# it can talk to its peers, a cold bootstrap would deadlock waiting on names
+# that only appear once the thing they are needed for has already happened.
+apiVersion: v1
+kind: Service
+metadata:
+  name: dist-mq-raft
+  namespace: __NAMESPACE__
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: dist-mq
+  ports:
+    - name: raft
+      port: 9000
+      targetPort: raft
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Client entry point. Round-robin across every node is safe here and only here:
+# a write landing on a follower comes back 421 with the leader's URL. The raft
+# port is deliberately absent — load balancing peer traffic breaks replication.
+apiVersion: v1
+kind: Service
+metadata:
+  name: dist-mq
+  namespace: __NAMESPACE__
+spec:
+  type: ClusterIP
+  selector:
+    app: dist-mq
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dist-mq
+  namespace: __NAMESPACE__
+spec:
+  serviceName: dist-mq-raft
+  replicas: __REPLICAS__
+  # Parallel, not the OrderedReady default: raft nodes come up as a group and
+  # elect among themselves, and a chaos-killed pod must be free to restart
+  # without waiting on the ordinal below it.
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: dist-mq
+  template:
+    metadata:
+      labels:
+        app: dist-mq
+    spec:
+      # 10s of graceful HTTP shutdown plus room for raft to close cleanly.
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          # Preferred, not required: a single-node VM must still be able to
+          # schedule the whole cluster.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: dist-mq
+      containers:
+        - name: dist-mq
+          image: __IMAGE__
+          imagePullPolicy: __PULL_POLICY__
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          # -raft-advertise is deliberately unset: it falls back to POD_IP, and
+          # a stale pod IP is harmless because leader redirects are keyed by
+          # server id rather than by raft address.
+          args:
+            - "-id=$(POD_NAME)"
+            - "-raft-dir=/data/raft"
+            - "-http-addr=0.0.0.0:8080"
+            - "-raft-addr=0.0.0.0:9000"
+            - "-peers=__PEERS__"
+            - "-bootstrap=true"
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: raft
+              containerPort: 9000
+          # Readiness is "this node is serving", not "this node has a leader".
+          # Gating on leadership would empty the client Service during every
+          # election, turning the 503-with-Retry-After that the client contract
+          # specifies into a connection refused.
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            # Requests only. A CPU limit would throttle the node mid-benchmark
+            # and the number that came out would describe the cgroup.
+            requests:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: raft-data
+              mountPath: /data/raft
+  volumeClaimTemplates:
+    - metadata:
+        name: raft-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: __STORAGE_CLASS__
+        resources:
+          requests:
+            storage: __STORAGE_SIZE__

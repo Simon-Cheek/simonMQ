@@ -250,14 +250,18 @@ func (n *Node) Barrier(timeout time.Duration) error {
 	return n.raft.Barrier(timeout).Error()
 }
 
-// LeaderAddress reports where writes should go. The false case is a live
+// LeaderID reports who writes should go to. The false case is a live
 // election, which is a backoff-and-retry for the client, not a redirect.
-func (n *Node) LeaderAddress() (string, bool) {
-	addr, _ := n.raft.LeaderWithID()
-	if addr == "" {
+//
+// Identity rather than address: raft addresses a node by whichever address it
+// advertised, and under an orchestrator that changes every time the process
+// moves. The id is stable by contract, so a lookup keyed on it cannot go stale.
+func (n *Node) LeaderID() (string, bool) {
+	_, id := n.raft.LeaderWithID()
+	if id == "" {
 		return "", false
 	}
-	return string(addr), true
+	return string(id), true
 }
 
 // LeaderCh drops signals when the receiver is busy, and two consecutive true

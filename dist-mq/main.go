@@ -104,8 +104,8 @@ func main() {
 }
 
 // parsePeers turns one flag into the two structures that need it: raft's
-// membership, and the raft-address to HTTP-address mapping a 421 redirect
-// needs. They come from one source so they cannot drift apart.
+// membership, and the server-id to HTTP-address mapping a 421 redirect needs.
+// They come from one source so they cannot drift apart.
 func parsePeers(raw string) ([]node.Peer, map[string]string, error) {
 	peerHTTP := make(map[string]string)
 	if strings.TrimSpace(raw) == "" {
@@ -124,7 +124,7 @@ func parsePeers(raw string) ([]node.Peer, map[string]string, error) {
 			return nil, nil, fmt.Errorf("peer %q: want id=raftAddr=httpBaseURL", entry)
 		}
 		peers = append(peers, node.Peer{ID: parts[0], Address: parts[1]})
-		peerHTTP[parts[1]] = parts[2]
+		peerHTTP[parts[0]] = parts[2]
 	}
 	return peers, peerHTTP, nil
 }

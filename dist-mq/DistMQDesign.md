@@ -102,7 +102,9 @@ Writes must reach the leader. A node that is not the leader rejects them, and th
 
 Each node listens on two ports for two different audiences. The Raft port carries only cluster traffic and should never be reachable by clients or placed behind a load balancer — peers address each other by identity, and round-robining between them breaks replication. The HTTP port is the opposite: a plain round-robin service is fine, because the leader redirect handles landing on a follower.
 
-`-peers` is parsed once into both the Raft membership and the address mapping used for redirects, so the two cannot drift apart.
+`-peers` is parsed once into both the Raft membership and the mapping used for redirects, so the two cannot drift apart.
+
+The redirect mapping is keyed by **server id**, not by Raft address. Raft reports the leader as both, but only the id is stable: the address is whatever that node advertised, and under an orchestrator it changes every time the process is rescheduled. Keying on the address would mean a node that moved could win an election and then be un-redirectable, because the address followers report for it no longer matches any entry in the map. The id never moves.
 
 ## Future Work
 
