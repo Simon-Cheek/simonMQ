@@ -1,0 +1,39 @@
+# Rendered by scripts/e2e.sh, one Job per run.
+#
+# The suite is told where the cluster is, never how big it is: -service is a
+# headless Service it resolves itself, so the same Job manifest covers a
+# one-node and a five-node deployment.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dist-mq-durability
+  namespace: __NAMESPACE__
+spec:
+  # A failed durability run is a finding, not a flake to be retried until it
+  # passes. Retrying would also re-run against a cluster chaos has since
+  # changed, so the second result would not describe the first failure.
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: dist-mq-durability
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: durability
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          command:
+            - /app/durability.test
+            - "-test.v"
+            - "-test.timeout=__TEST_TIMEOUT__"
+            - "-service=dist-mq-raft.__NAMESPACE__.svc.cluster.local"
+            - "-sink=http://dist-mq-sink.__NAMESPACE__.svc.cluster.local:9090"
+            - "-queues=__QUEUES__"
+            - "-subscribers=__SUBSCRIBERS__"
+            - "-messages=__MESSAGES__"
+            - "-drain-timeout=__DRAIN_TIMEOUT__"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi

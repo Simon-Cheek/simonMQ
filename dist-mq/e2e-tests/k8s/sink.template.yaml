@@ -1,0 +1,57 @@
+# Rendered by scripts/e2e.sh. Long-lived: the sink outlives any one run, and
+# /reset is what separates one run's tallies from the next.
+#
+# Exactly one replica, deliberately. Delivery records are held in memory, so a
+# second replica would split the evidence in half and make every run look like
+# it had lost messages.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dist-mq-sink
+  namespace: __NAMESPACE__
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dist-mq-sink
+  template:
+    metadata:
+      labels:
+        app: dist-mq-sink
+    spec:
+      containers:
+        - name: sink
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          command:
+            - /app/sink
+            - "-addr=:9090"
+            - "-n=__SUBSCRIBERS__"
+            - "-mode=record"
+          ports:
+            - name: http
+              containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /stats
+              port: http
+            initialDelaySeconds: 1
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dist-mq-sink
+  namespace: __NAMESPACE__
+spec:
+  type: ClusterIP
+  selector:
+    app: dist-mq-sink
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
